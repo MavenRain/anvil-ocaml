@@ -1,0 +1,8 @@
+(tests
+ (names t_common t_object_meta t_functor t_functor_views t_marshal_props
+   t_api_method)
+ (libraries anvil_support anvil_k8s_objects alcotest qcheck-core
+   qcheck-alcotest)
+ (flags
+  (:standard -w +a-4-9-40-41-42-44-45-70 -open Anvil_support
+   -open Anvil_k8s_objects)))
