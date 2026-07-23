@@ -1,10 +1,11 @@
 (tests
  (names t_common t_object_meta t_functor t_functor_views t_marshal_props
    t_api_method t_state_machine t_message t_cluster t_api_server
-   t_reconcile_driver)
+   t_reconcile_driver t_vreplica_set t_vreplica_set_reconciler
+   t_vreplica_set_driver)
  (libraries anvil_support anvil_k8s_objects anvil_state_machine anvil_reconciler
-   anvil_cluster comp_cat alcotest qcheck-core qcheck-alcotest)
+   anvil_cluster anvil_controllers comp_cat alcotest qcheck-core qcheck-alcotest)
  (flags
   (:standard -w +a-4-9-40-41-42-44-45-70 -open Anvil_support
    -open Anvil_k8s_objects -open Anvil_reconciler -open Anvil_state_machine
-   -open Anvil_cluster)))
+   -open Anvil_cluster -open Anvil_controllers)))

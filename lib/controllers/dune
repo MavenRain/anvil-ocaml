@@ -1,0 +1,7 @@
+(library
+ (name anvil_controllers)
+ (libraries anvil_support anvil_k8s_objects anvil_reconciler anvil_state_machine
+   anvil_cluster comp_cat)
+ (flags
+  (:standard -w +a-4-9-40-41-42-44-45-70 -open Anvil_support
+   -open Anvil_k8s_objects -open Anvil_reconciler -open Anvil_cluster)))
