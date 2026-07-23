@@ -19,6 +19,7 @@
   (ocaml
    (>= 5.1))
   yojson
+  comp_cat
   (alcotest :with-test)
   (qcheck-core :with-test)
   (qcheck-alcotest :with-test)))

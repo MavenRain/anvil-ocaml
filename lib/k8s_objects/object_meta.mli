@@ -30,6 +30,15 @@ val name : t -> string option
 val namespace : t -> string option
 (** The [namespace] field; required by the derived [object_ref]. *)
 
+val uid : t -> Common.Uid.t option
+(** The [uid] field (function form). Anvil reads [metadata.uid] directly under a
+    well-formedness invariant; the projection is total, [None] when absent. Used
+    by {!Cluster}'s ESR goal to compare a stored object's uid with the cr. *)
+
+val deletion_timestamp : t -> string option
+(** The [deletion_timestamp] field (function form). [None] iff the object is not
+    marked for deletion; the ESR goal requires it absent for a settled cr. *)
+
 val with_name : string -> t -> t
 (** Anvil [with_name]. *)
 

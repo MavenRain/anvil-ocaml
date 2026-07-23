@@ -29,6 +29,8 @@ let default () : t =
 
 let name (m : t) : string option = m.name
 let namespace (m : t) : string option = m.namespace
+let uid (m : t) : Common.Uid.t option = m.uid
+let deletion_timestamp (m : t) : string option = m.deletion_timestamp
 let with_name name m = { m with name = Some name }
 let with_generate_name generate_name m = { m with generate_name = Some generate_name }
 let with_namespace namespace m = { m with namespace = Some namespace }
