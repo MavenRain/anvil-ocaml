@@ -157,6 +157,10 @@ module Rpc_id_allocator = struct
      counter; the returned allocator carries [counter + 1]. *)
   let allocate (a : t) : t * Rpc_id.t =
     ({ rpc_id_counter = a.rpc_id_counter + 1 }, Rpc_id.of_int a.rpc_id_counter)
+
+  (* Anvil [RPCIdAllocator] (message.rs:36) is its monotone [rpc_id_counter], so
+     counter equality is faithful state equality. *)
+  let equal (a : t) (b : t) : bool = Int.equal a.rpc_id_counter b.rpc_id_counter
 end
 
 type message_ops = { recv : t option; send : Pool.t }

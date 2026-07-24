@@ -27,6 +27,13 @@ val k_create_resp :
 val k_get_then_delete_resp :
   'a Io.response_view option -> (unit, Api_method.api_error) result option
 
+(** Anvil [is_some_k_get_then_update_resp_view] +
+    [extract_some_k_get_then_update_resp_view]. [Some res] iff [resp] is
+    [Some (K_response (Get_then_update_response _))]. *)
+val k_get_then_update_resp :
+  'a Io.response_view option ->
+  (Dynamic_object.t, Api_method.api_error) result option
+
 (** Anvil [is_some_k_get_then_update_status_resp_view] +
     [extract_some_k_get_then_update_status_resp_view]. [Some res] iff [resp] is
     [Some (K_response (Get_then_update_status_response _))]. *)

@@ -29,6 +29,25 @@ val vrs : desired:int -> Vreplica_set.t
 val vrs_ref : Common.object_ref
 (** The CR key [{ kind = ]{!kind}[; name = "vrs1"; namespace = "ns" }]. *)
 
+val vd : desired:int -> V_deployment.t
+(** A well-formed VDeployment named [vd1] in namespace [ns] with uid [1],
+    resource_version [0], [desired] replicas, and the shared [app=x] selector and
+    matching pod template (the same {!vrs} builders), so
+    {!V_deployment.state_validation} holds. Seeded by the P9 two-controller exec
+    witness; additive to the vrs-only {!cluster}. *)
+
+val vd_ref : Common.object_ref
+(** The VDeployment CR key
+    [{ kind = ]{!V_deployment.kind}[; name = "vd1"; namespace = "ns" }]. *)
+
+val vd_and_vrs_installed : Api_server.installed_types
+(** A multi-kind {!Api_server.installed_types} admitting BOTH the vreplicaset and
+    vdeployment custom resources (and pods). Predicates are permissive; only
+    [marshalled_default_status] dispatches by {!Common.kind} (exhaustively):
+    vreplicaset gives the vrs default status, vdeployment the empty vdeployment
+    status ([`Null]), and every builtin kind a [`Null] default. Used by the P9
+    two-controller convergence witness; the vrs-only {!cluster} is untouched. *)
+
 val seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** A reachable initial cluster state: the {!Cluster.init} shape (empty controller
     reconcile state, fresh rpc allocator) but with {!vrs}[ ~desired] already stored

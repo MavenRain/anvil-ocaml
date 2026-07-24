@@ -38,6 +38,14 @@ module Reconcile_id_allocator = struct
 
   let allocate (a : t) : t * reconcile_id =
     ({ reconcile_id_counter = a.reconcile_id_counter + 1 }, a.reconcile_id_counter)
+
+  (* Anvil [ReconcileIdAllocator] (types.rs:31) is its monotone
+     [reconcile_id_counter], so counter equality is faithful state equality. *)
+  let equal (a : t) (b : t) : bool =
+    Int.equal a.reconcile_id_counter b.reconcile_id_counter
+
+  (* Read-only counter accessor: the number of reconcile invocations allocated. *)
+  let reconcile_count (a : t) : int = a.reconcile_id_counter
 end
 
 (* Anvil [OngoingReconcile] (types.rs:62): the per-cr in-flight reconcile record.

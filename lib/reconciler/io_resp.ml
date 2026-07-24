@@ -49,6 +49,21 @@ let k_get_then_delete_resp (resp : 'a Io.response_view option) :
     | Api_method.Get_then_update_status_response _ ->
       None)
 
+let k_get_then_update_resp (resp : 'a Io.response_view option) :
+    (Dynamic_object.t, Api_method.api_error) result option =
+  match resp with
+  | None -> None
+  | Some (Io.External_response _) -> None
+  | Some (Io.K_response r) -> (
+    match r with
+    | Api_method.Get_then_update_response { res } -> Some res
+    | Api_method.Get_response _ | Api_method.List_response _
+    | Api_method.Create_response _ | Api_method.Delete_response _
+    | Api_method.Update_response _ | Api_method.Update_status_response _
+    | Api_method.Get_then_delete_response _
+    | Api_method.Get_then_update_status_response _ ->
+      None)
+
 let k_get_then_update_status_resp (resp : 'a Io.response_view option) :
     (Dynamic_object.t, Api_method.api_error) result option =
   match resp with

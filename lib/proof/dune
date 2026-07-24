@@ -1,0 +1,9 @@
+(library
+ (name anvil_proof)
+ (libraries anvil_support anvil_k8s_objects anvil_reconciler anvil_state_machine
+   anvil_cluster anvil_controllers anvil_assurance anvil_checker comp_cat)
+ (flags
+  (:standard -w +a-4-9-40-41-42-44-45-70 -open Anvil_support
+   -open Anvil_k8s_objects -open Anvil_reconciler -open Anvil_state_machine
+   -open Anvil_cluster -open Anvil_controllers -open Anvil_assurance
+   -open Anvil_checker)))

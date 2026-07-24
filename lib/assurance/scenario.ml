@@ -113,6 +113,75 @@ let vrs ~desired : Vreplica_set.t =
 
 let vrs_ref : Common.object_ref = { Common.kind; name = "vrs1"; namespace = "ns" }
 
+(* -- P9 additions: the VDeployment CR + a multi-kind installed_types so the two-
+   controller exec witness (VDeployment -> VReplicaSet -> Pods) can seed a
+   VDeployment and have the api-server default-status BOTH kinds. Additive: the
+   vrs-only [installed_types]/[cluster] above are untouched. -- *)
+
+(* Metadata for the canonical VDeployment: [vd1] in [ns], uid 1, resource_version
+   0 (the api-server counters advance strictly past both when seeded). No owner
+   reference: the exec witness runs against Exec_api_server (no built-in garbage
+   collector), and [V_deployment.controller_owner_ref] is derived from name+uid,
+   not from [owner_references]. *)
+let vd_metadata : Object_meta.t =
+  {
+    (Object_meta.default ()) with
+    Object_meta.name = Some "vd1";
+    namespace = Some "ns";
+    uid = Some (Common.Uid.of_int 1);
+    resource_version = Some (Common.Resource_version.of_int 0);
+  }
+
+(* A well-formed VDeployment named [vd1] in [ns] with uid 1 / rv 0, [desired]
+   replicas, and the shared [selector] ([app=x]) and [template] (whose metadata
+   labels are [app=x], satisfying [Label_selector.matches selector]) reused from
+   the vrs builders above, so [V_deployment.state_validation] holds. Its bare
+   template spec is [Some], and [strategy]/[minReadySeconds]/[progressDeadline]
+   default to [None] (the [None,None] and no-strategy clauses of state_validation
+   both admit). *)
+let vd ~desired : V_deployment.t =
+  V_deployment.make ~metadata:vd_metadata
+    ~spec:
+      {
+        (V_deployment.vd_spec_default ()) with
+        V_deployment.replicas = Some desired;
+        selector;
+        template;
+      }
+    ~status:()
+
+let vd_ref : Common.object_ref =
+  { Common.kind = V_deployment.kind; name = "vd1"; namespace = "ns" }
+
+(* A multi-kind [installed_types] admitting BOTH the vreplicaset and vdeployment
+   custom resources (plus pods). Predicates stay permissive (all [true]); only
+   [marshalled_default_status] dispatches by kind, EXHAUSTIVELY over [Common.kind]:
+   vreplicaset -> the vrs default status marshalled; vdeployment -> the (empty)
+   vdeployment status marshalled ([`Null]); every builtin kind (Pod, ...) -> a
+   [`Null] default. Used by the P9 two-controller exec witness. *)
+let vd_and_vrs_installed : Api_server.installed_types =
+  {
+    Api_server.unmarshallable_spec = (fun _ _ -> true);
+    unmarshallable_status = (fun _ _ -> true);
+    valid_object = (fun _ -> true);
+    valid_transition = (fun _ _ -> true);
+    marshalled_default_status =
+      (fun (k : Common.kind) ->
+        match k with
+        | Common.Custom_resource s ->
+          if String.equal s Vreplica_set.kind_name then
+            Vreplica_set.marshal_status
+              (Some (Vreplica_set.vrs_status_default ()))
+          else if String.equal s V_deployment.kind_name then
+            V_deployment.marshal_status ()
+          else Value.of_json `Null
+        | Common.Config_map | Common.Daemon_set
+        | Common.Persistent_volume_claim | Common.Pod | Common.Role
+        | Common.Role_binding | Common.Stateful_set | Common.Service
+        | Common.Service_account | Common.Secret ->
+          Value.of_json `Null);
+  }
+
 (* A reachable (NOT [Cluster.init]) state: etcd already holds [vrs ~desired] under
    [vrs_ref] with uid 1 / rv 0, and the api-server counters sit strictly above them
    (uid_counter 2 > 1, resource_version_counter 1 > 0) so Invariants #2's [< counter]

@@ -35,6 +35,13 @@ type t = {
       (** The largest resource-version the api-server allocator is allowed to
           reach. Excludes stale-resource-version / optimistic-concurrency bugs
           that need more writes than this. *)
+  reconcile_ceiling : int;
+      (** The largest per-controller [reconcile_id] (number of reconcile
+          INVOCATIONS) any run may reach. Excludes
+          multi-reconcile-interference / steady-state-re-reconcile bugs that
+          need more than this many invocations. Like [uid_ceiling] /
+          [rv_ceiling] it is a MULTI-STEP exploration limit, reserved for the
+          checker; P2 does not enforce it. *)
   max_reconcile_depth : int;
       (** The reconcile-step fuel per reconcile round (bounds the run/continue
           chain). Excludes long-reconcile-chain bugs deeper than this. *)
@@ -48,8 +55,9 @@ val default : t
 (** Which fields P2 actually consumes. Only [max_in_flight], [max_objects_per_kind]
     and [max_controllers] bound the SINGLE-STEP {!Cluster.enabled_successors}
     enumeration (they clip the per-step [recv] / object / controller domains).
-    [uid_ceiling], [rv_ceiling] and [max_reconcile_depth] are MULTI-STEP
-    exploration limits: they bound a whole run (uid/rv growth, reconcile-chain
-    depth), so a single successor step cannot observe them. They are reserved for
-    the Phase-5 depth-bounded model-checking driver and are NOT yet consumed in
-    P2 — no reader should assume P2 enforces them. *)
+    [uid_ceiling], [rv_ceiling], [reconcile_ceiling] and [max_reconcile_depth]
+    are MULTI-STEP exploration limits: they bound a whole run (uid/rv growth,
+    reconcile-invocation count, reconcile-chain depth), so a single successor
+    step cannot observe them. They are reserved for the Phase-5 depth-bounded
+    model-checking driver and are NOT yet consumed in P2 — no reader should
+    assume P2 enforces them. *)

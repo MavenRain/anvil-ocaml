@@ -35,6 +35,18 @@ module Reconcile_id_allocator : sig
       [(advanced_allocator, allocated_id)] where [allocated_id] is the CURRENT
       counter and [advanced_allocator] has [counter + 1]. Thread the returned
       allocator forward for uniqueness; do NOT pre-increment. *)
+
+  val equal : t -> t -> bool
+  (** Counter equality on Anvil [ReconcileIdAllocator]'s [reconcile_id_counter]
+      (types.rs:31): the allocator IS its monotone counter, so [Int.equal] on the
+      counter is a faithful state equality. Additive, consumed by the P5
+      cluster-state equality (BUILD-SPEC-P5 §1); no behaviour change. *)
+
+  val reconcile_count : t -> int
+  (** The number of reconcile invocations allocated so far (the monotone
+      [reconcile_id_counter]). Read-only accessor for the checker's
+      [Bound.reconcile_ceiling] prune (BUILD-SPEC-P8 §3.2); no behaviour
+      change. *)
 end
 
 type ongoing_reconcile = {
