@@ -88,11 +88,29 @@ val ss_spec_default : unit -> ss_spec
 val ss_spec_equal : ss_spec -> ss_spec -> bool
 (** Full structural equality on {!ss_spec} (all eleven fields). *)
 
+val ss_spec_immutable_eq : ss_spec -> ss_spec -> bool
+(** stateful_set.rs:49 immutable-field check: [ss_spec_immutable_eq old new] is
+    [true] iff [old] and [new] agree on every field EXCEPT [replicas], [template]
+    and [persistent_volume_claim_retention_policy] (those three are mutable). The
+    [transition_validation] rule. *)
+
+val ss_spec_to_json : ss_spec -> Yojson.Safe.t
+(** Marshal an {!ss_spec} (serde_json analogue); optionals dropped when [None]. *)
+
+val ss_spec_of_json : Yojson.Safe.t -> ss_spec Res.t
+(** Unmarshal an {!ss_spec}; {!Err.Missing_field} on an absent required field. *)
+
 val ss_status_default : unit -> ss_status
 (** [StatefulSetStatusView::default]: [ready_replicas] [None]. *)
 
 val ss_status_equal : ss_status -> ss_status -> bool
 (** Structural equality on {!ss_status}. *)
+
+val ss_status_to_json : ss_status -> Yojson.Safe.t
+(** Marshal an {!ss_status} (serde_json analogue); optional dropped when [None]. *)
+
+val ss_status_of_json : Yojson.Safe.t -> ss_status Res.t
+(** Unmarshal an {!ss_status}. *)
 
 (** The derived [ResourceView] surface (Anvil's macro output): [kind]
     ([Stateful_set]), [default], [metadata]/[spec]/[status] projections,

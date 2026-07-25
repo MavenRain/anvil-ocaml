@@ -8,6 +8,14 @@
     [Some res] iff the response is present, a {!Io.K_response}, and of the
     matching kind; [None] for absent / external / other-kind responses. *)
 
+(** Anvil [is_some_k_get_resp_view] + [extract_some_k_get_resp_view]. [Some res]
+    iff [resp] is [Some (K_response (Get_response _))]; [None] for absent /
+    external / other-kind responses. The [Ok] payload is the fetched object;
+    [Err Object_not_found] marks it absent (the PVC existence-probe arm). *)
+val k_get_resp :
+  'a Io.response_view option ->
+  (Dynamic_object.t, Api_method.api_error) result option
+
 (** Anvil [is_some_k_list_resp_view] + [extract_some_k_list_resp_view]. [Some
     res] iff [resp] is [Some (K_response (List_response _))]; [None] for absent /
     external / other-kind responses. *)

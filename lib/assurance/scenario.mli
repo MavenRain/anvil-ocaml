@@ -48,6 +48,29 @@ val vd_and_vrs_installed : Api_server.installed_types
     status ([`Null]), and every builtin kind a [`Null] default. Used by the P9
     two-controller convergence witness; the vrs-only {!cluster} is untouched. *)
 
+val vsts : desired:int -> ?vct:bool -> unit -> V_stateful_set.t
+(** A well-formed VStatefulSet named [vsts1] in namespace [ns] with uid [1],
+    resource_version [0], a non-empty [service_name], [desired] replicas, and the
+    shared [app=x] selector and matching pod template (the same {!vrs} builders),
+    so {!V_stateful_set.state_validation} holds and [controller_owner_ref] is
+    [Some]. With [~vct:true] the spec carries exactly one volumeClaimTemplate (a
+    dash-free-named PVC in [ns] with a [Some] spec, which the reconciler's
+    [make_pvcs] specialises per ordinal); [~vct:false] (the default) omits it.
+    Seeded by the P10 VStatefulSet witness; additive to the vrs-only
+    {!cluster}. *)
+
+val vsts_ref : Common.object_ref
+(** The VStatefulSet CR key
+    [{ kind = ]{!V_stateful_set.kind}[; name = "vsts1"; namespace = "ns" }]. *)
+
+val vsts_installed : Api_server.installed_types
+(** A multi-kind {!Api_server.installed_types} admitting the vstatefulset custom
+    resource (and the Pods / PersistentVolumeClaims it manages). Predicates are
+    permissive; only [marshalled_default_status] dispatches by {!Common.kind}
+    (exhaustively): vstatefulset gives the VSS default status (the [ready_replicas]
+    status, [{ "readyReplicas": null }]) and every other kind a [`Null] default.
+    Used by the P10 VStatefulSet witness; the vrs-only {!cluster} is untouched. *)
+
 val seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** A reachable initial cluster state: the {!Cluster.init} shape (empty controller
     reconcile state, fresh rpc allocator) but with {!vrs}[ ~desired] already stored

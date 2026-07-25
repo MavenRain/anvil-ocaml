@@ -90,3 +90,53 @@ let of_json (j : Yojson.Safe.t) : t Res.t =
   let* spec = Json.opt_mem j "spec" spec_of_json in
   let* status = Json.opt_mem j "status" status_of_json in
   ok { metadata; spec; status }
+
+(* -- standalone marshal path --
+
+   Anvil registers PVC as a ResourceView; here it is a plain record, so the
+   Dynamic_object bridge {!Resource_view.Make} would synthesise is hand-rolled,
+   mirroring {!Pod} exactly: a present [spec]/[status] marshals to its object,
+   an absent one to [`Null], and [unmarshal] kind-checks then round-trips. This
+   avoids functorising the module (which would churn every
+   [Persistent_volume_claim.t list] holder such as [Views.Stateful_set]). *)
+let kind = Common.Persistent_volume_claim
+
+let marshal (pvc : t) : Dynamic_object.t =
+  Dynamic_object.make ~kind ~metadata:pvc.metadata
+    ~spec:(Value.of_json (Option.fold ~none:`Null ~some:spec_to_json pvc.spec))
+    ~status:
+      (Value.of_json (Option.fold ~none:`Null ~some:status_to_json pvc.status))
+
+let unmarshal (d : Dynamic_object.t) : t Res.t =
+  let open Res in
+  let dk = Dynamic_object.kind d in
+  if Common.equal_kind dk kind then
+    let* spec =
+      match Value.json (Dynamic_object.spec d) with
+      | `Null -> ok None
+      | `Assoc _ as j -> map Option.some (spec_of_json j)
+      | `Bool _ | `Int _ | `Intlit _ | `Float _ | `String _ | `List _ ->
+        error
+          (Err.Decode_error
+             {
+               typ = "PersistentVolumeClaimSpec";
+               detail = "expected object or null";
+             })
+    in
+    let* status =
+      match Value.json (Dynamic_object.status d) with
+      | `Null -> ok None
+      | `Assoc _ as j -> map Option.some (status_of_json j)
+      | `Bool _ | `Int _ | `Intlit _ | `Float _ | `String _ | `List _ ->
+        error
+          (Err.Decode_error
+             {
+               typ = "PersistentVolumeClaimStatus";
+               detail = "expected object or null";
+             })
+    in
+    ok { metadata = Dynamic_object.metadata d; spec; status }
+  else
+    error
+      (Err.Kind_mismatch
+         { expected = Common.show_kind kind; found = Common.show_kind dk })

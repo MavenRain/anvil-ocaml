@@ -182,6 +182,94 @@ let vd_and_vrs_installed : Api_server.installed_types =
           Value.of_json `Null);
   }
 
+(* -- P10 additions: the VStatefulSet CR (single controller managing Pods + PVCs
+   directly) plus a VSS-admitting installed_types, so a P10 exec/model witness can
+   seed a VStatefulSet and have the api-server default-status its kind (and admit
+   the Pods / PVCs it creates). Additive: the vrs-only [installed_types]/[cluster]
+   above are untouched. -- *)
+
+(* Metadata for the canonical VStatefulSet: [vsts1] in [ns], uid 1, rv 0 (the
+   api-server counters advance strictly past both when seeded). Name + uid + ns
+   are Some, so [V_stateful_set.controller_owner_ref] is [Some] and the make_pod /
+   make_pvcs child owner refs resolve. *)
+let vsts_metadata : Object_meta.t =
+  {
+    (Object_meta.default ()) with
+    Object_meta.name = Some "vsts1";
+    namespace = Some "ns";
+    uid = Some (Common.Uid.of_int 1);
+    resource_version = Some (Common.Resource_version.of_int 0);
+  }
+
+(* One volumeClaimTemplate, included in the CR spec only when [vsts ~vct:true].
+   The template name is dash-free ([data]) and its namespace is [ns], as
+   [V_stateful_set.state_validation] condition 7 requires; its spec is [Some]. The
+   reconciler's [make_pvcs] specialises it per ordinal to
+   [vstatefulset-data-vsts1-<ord>]. *)
+let vsts_pvc_template : Persistent_volume_claim.t =
+  {
+    Persistent_volume_claim.metadata =
+      {
+        (Object_meta.default ()) with
+        Object_meta.name = Some "data";
+        namespace = Some "ns";
+      };
+    spec = Some (Persistent_volume_claim.spec_default ());
+    status = None;
+  }
+
+(* A well-formed VStatefulSet named [vsts1] in [ns] with uid 1 / rv 0, [desired]
+   replicas, a non-empty [service_name], the shared [selector] ([app=x]) and
+   [template] (whose metadata labels are [app=x], matching the selector and
+   carrying NEITHER reserved key), and — when [~vct:true] — exactly one
+   volumeClaimTemplate. Every other spec field defaults to [None]
+   ([ss_spec_default]), so all nine clauses of [V_stateful_set.state_validation]
+   hold and [controller_owner_ref] is [Some]. Mirrors the [vrs]/[vd] builder
+   argument style ([~desired]), with [?vct] gating the storage template. *)
+let vsts ~desired ?(vct = false) () : V_stateful_set.t =
+  V_stateful_set.make ~metadata:vsts_metadata
+    ~spec:
+      {
+        (Stateful_set.ss_spec_default ()) with
+        Stateful_set.replicas = Some desired;
+        selector;
+        template;
+        service_name = "vsts1";
+        volume_claim_templates =
+          (if vct then Some [ vsts_pvc_template ] else None);
+      }
+    ~status:None
+
+let vsts_ref : Common.object_ref =
+  { Common.kind = V_stateful_set.kind; name = "vsts1"; namespace = "ns" }
+
+(* A multi-kind [installed_types] admitting the vstatefulset custom resource (plus
+   the Pods and PersistentVolumeClaims it manages). Predicates stay permissive
+   (all [true]); only [marshalled_default_status] dispatches by kind, EXHAUSTIVELY
+   over [Common.kind]: vstatefulset -> the VSS default status marshalled (the
+   [ready_replicas] status, i.e. [{ "readyReplicas": null }]); every other kind ->
+   a [`Null] default. Used by the P10 VStatefulSet witness. *)
+let vsts_installed : Api_server.installed_types =
+  {
+    Api_server.unmarshallable_spec = (fun _ _ -> true);
+    unmarshallable_status = (fun _ _ -> true);
+    valid_object = (fun _ -> true);
+    valid_transition = (fun _ _ -> true);
+    marshalled_default_status =
+      (fun (k : Common.kind) ->
+        match k with
+        | Common.Custom_resource s ->
+          if String.equal s V_stateful_set.kind_name then
+            V_stateful_set.marshal_status
+              (Some (Stateful_set.ss_status_default ()))
+          else Value.of_json `Null
+        | Common.Config_map | Common.Daemon_set
+        | Common.Persistent_volume_claim | Common.Pod | Common.Role
+        | Common.Role_binding | Common.Stateful_set | Common.Service
+        | Common.Service_account | Common.Secret ->
+          Value.of_json `Null);
+  }
+
 (* A reachable (NOT [Cluster.init]) state: etcd already holds [vrs ~desired] under
    [vrs_ref] with uid 1 / rv 0, and the api-server counters sit strictly above them
    (uid_counter 2 > 1, resource_version_counter 1 > 0) so Invariants #2's [< counter]
