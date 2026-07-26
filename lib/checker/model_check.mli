@@ -82,6 +82,17 @@ val count_states_where : 'a reachable -> ('a -> bool) -> int
     VACUOUS, so a clean verdict there verifies nothing and must be reported as a
     modeling gap rather than as "ESR holds" ([[feedback-workflow-zero-findings-may-be-vacuous]]). *)
 
+val fold_states : 'a reachable -> init:'b -> f:('b -> 'a -> 'b) -> 'b
+(** Fold [f] over the explored reachable set: visits each DISTINCT reachable
+    state EXACTLY ONCE, in an UNSPECIFIED order (the traversal order is an
+    implementation detail and is not part of this contract). {!count_states_where}
+    is the special case [fold_states r ~init:0 ~f:(fun n s -> if pred s then n + 1
+    else n)]. Provided so a caller needing several aggregates over the same graph
+    (maxima, several gate counts, pruning flags) computes them in ONE pass rather
+    than one traversal per statistic; the P13 fault report is the intended
+    consumer. Purely additive: {!explore} / {!check_safety} / {!check_reaches} /
+    {!count_states_where} are unchanged. *)
+
 val check_safety :
   'a reachable -> inv:('a -> bool) -> equal:('a -> 'a -> bool) -> 'a outcome
 (** Refute a STATE invariant [inv] by reachability (arch §0.1.1: safety is

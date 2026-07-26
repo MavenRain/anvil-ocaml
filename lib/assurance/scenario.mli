@@ -86,6 +86,63 @@ val vsts_cluster : Cluster.t
     [Cluster.t] the VSTS BMC/ESR legs explore, and the argument the VSTS legs pass
     to {!productive_successors} / {!Cluster_check.settled}. *)
 
+val vsts_seed_faults :
+  desired:int ->
+  crash:bool ->
+  req_drop:bool ->
+  pod_monkey:bool ->
+  Cluster.cluster_state
+(** {!vsts_seed} with the three disruptor toggles set INDEPENDENTLY: [crash] is
+    the {!controller_id} entry's [crash_enabled] (Anvil's [RestartController]
+    fault, cluster.rs:377), [req_drop] the api-server transient-failure switch
+    (Anvil's [DropReq], cluster.rs:439) and [pod_monkey] the pod disruptor
+    (cluster.rs:492). The CR is still admitted through a REAL
+    {!Api_server.handle_create_request} (uid/resource_version server-stamped,
+    never forged) against a fresh empty api-server, so the reachable
+    uid/rv/counter shape is exactly {!vsts_seed}'s. Introduced by P13 to isolate
+    ONE fault dimension at a time.
+
+    {b Reachability / soundness (BUILD-SPEC-P13 §3).} {!Cluster.init}
+    (cluster.rs:110, [lib/cluster/cluster.ml:75-97]) REQUIRES all three flags
+    TRUE, so a seed with any flag [false] is NOT an init state. Exploring from it
+    is nonetheless SOUND: every flag combination componentwise <=
+    [(true, true, true)] is reachable from an init state by a prefix of
+    [Step.Disable_crash_step] / [Disable_req_drop_step] /
+    [Disable_pod_monkey_step], each of which flips only its own flag
+    (cluster.rs:407, :472, :526 =
+    [lib/cluster/cluster.ml:337], [:385], [:445]). So a safety violation found
+    from such a seed is a genuine violation of a REACHABLE behaviour, and a clean
+    verdict is falsification-up-to-bounds of the SUFFIX behaviours starting
+    there. The pre-existing [~fair:true] seeds already rest on precisely this
+    argument (they are the all-disabled suffix).
+
+    {b MEASURED correction to BUILD-SPEC-P13 §3.} The spec asserts that the
+    all-faults-ON seed [~crash:true ~req_drop:true ~pod_monkey:true] "is the
+    FIRST seed in the repo that satisfies [Cluster.init] outright". That is FALSE
+    as measured: [Cluster.init vsts_cluster (vsts_seed_faults ~desired:1
+    ~crash:true ~req_drop:true ~pod_monkey:true) = false]. The all-ON seed does
+    satisfy every FAULT-FLAG conjunct of [Cluster.init], which is the
+    load-bearing part, but the remaining
+    [Api_server.init] conjunct demands an EMPTY etcd
+    ([lib/cluster/api_server.ml:73], [Object_ref_map.is_empty resources]) while
+    the seed already holds the server-created CR ([etcd_cardinal = 1]). Isolated
+    by measurement: the same state with an empty etcd - and nothing else changed
+    - gives [Cluster.init = true], so the non-empty etcd is the ONLY failing
+    conjunct.
+
+    {b SECOND correction (review stage).} An earlier draft of this note added
+    that the all-ON seed is the FIRST seed in the repo to satisfy the fault-flag
+    conjuncts. That is also false and has been removed: {!vsts_seed} with
+    [~fair:false] delegates to the identical [vsts_seed_faults ~crash:true
+    ~req_drop:true ~pod_monkey:true] call ([lib/assurance/scenario.ml:380-382]),
+    so it IS this seed by value, and it is live pre-P13 at
+    [lib/checker/cluster_check.ml:503] (as is the VRS {!seed} [~fair:false] at
+    [:365]). No test compares seeds, so that clause could never have reddened.
+    Soundness is unaffected: the already-created CR rests on the SAME standing
+    argument every seed in this module rests on (a client created the CR before
+    the reconcile starts, see {!seed}), and the flag prefix argument above covers
+    the fault dimension. *)
+
 val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** Mirror of {!seed} for VSTS: the {!vsts} CR ([Scenario.vsts ~desired], default
     [?vct:false]) created into etcd by a REAL {!Api_server.handle_create_request}
@@ -94,7 +151,30 @@ val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
     past them — the same reachable uid/rv/counter shape {!seed} carries. The VSTS
     controller is scheduled at {!controller_id} ([Controller.init] reconcile state);
     disruptors gated by [fair] ([false] = full nondeterminism for safety; [true] =
-    the fair suffix for ESR). *)
+    the fair suffix for ESR). Since P13 a thin delegation to
+    [{!vsts_seed_faults} ~desired ~crash:(not fair) ~req_drop:(not fair)
+    ~pod_monkey:(not fair)], so behaviour is unchanged; see {!vsts_seed_faults}
+    for the reachability argument that licenses a [~fair:true] (all-disabled,
+    hence non-{!Cluster.init}) seed. *)
+
+val vsts_seed_multi_faults :
+  desireds:int list ->
+  crash:bool ->
+  req_drop:bool ->
+  pod_monkey:bool ->
+  Cluster.cluster_state
+(** {!vsts_seed_multi} with the three disruptor toggles set INDEPENDENTLY, exactly
+    as {!vsts_seed_faults} does for {!vsts_seed}: one VStatefulSet [vstsN] per
+    element of [desireds], each admitted through a real
+    {!Api_server.handle_create_request} (uid/rv server-stamped, distinct
+    {!Object_ref_map} keys), all under the single {!controller_id}. The P13 seed
+    for the crash-strengthened concurrent-reconcile witness ([cardinal(ongoing) >=
+    2] reached AFTER a crash). The BUILD-SPEC-P13 §3 reachability argument
+    recorded on {!vsts_seed_faults} applies verbatim: any flag combination
+    componentwise <= [(true, true, true)] is the suffix of an init behaviour after
+    a prefix of the three flag-flipping [Disable_*] steps (cluster.rs:407, :472,
+    :526), so violations found here are genuine and clean verdicts are
+    falsification-up-to-bounds of those suffixes. *)
 
 val vsts_seed_multi : desireds:int list -> fair:bool -> Cluster.cluster_state
 (** A multi-CR VSTS seed: one VStatefulSet [vstsN] per element of [desireds], each
@@ -103,7 +183,9 @@ val vsts_seed_multi : desireds:int list -> fair:bool -> Cluster.cluster_state
     => [ongoing_reconciles] never holds >= 2 => inv6 vacuous), a >= 2-element
     [desireds] lets the reachable graph reach [cardinal(ongoing) >= 2], the
     non-vacuity witness for {!Invariants.unique_reconcile_id_invariant}. The VSTS
-    analogue of {!seed_multi}. [~fair] as in {!vsts_seed}. *)
+    analogue of {!seed_multi}. [~fair] as in {!vsts_seed}. Since P13 a thin
+    delegation to [{!vsts_seed_multi_faults} ~desireds ~crash:(not fair)
+    ~req_drop:(not fair) ~pod_monkey:(not fair)], so behaviour is unchanged. *)
 
 val seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** A reachable initial cluster state: the {!Cluster.init} shape (empty controller

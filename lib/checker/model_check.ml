@@ -115,6 +115,15 @@ let frontier_emptied r = r.frontier_emptied
 let states_seen r = r.states
 let count_states_where r pred = List.length (List.filter pred r.order)
 
+(* One left fold over the deduped visited set ([order] holds each DISTINCT
+   reachable state exactly once, in BFS discovery order).  Purely additive over
+   [count_states_where], which is the special case [f acc s = acc + (if pred s
+   then 1 else 0)]: it lets a caller derive MANY aggregates (maxima, several
+   counts, pruning flags) in a SINGLE pass instead of one traversal per
+   statistic.  The BFS order is an implementation detail and is NOT part of the
+   contract; only "each distinct state once" is. *)
+let fold_states r ~init ~f = List.fold_left f init r.order
+
 (* Parent of [s] in the BFS tree (None for an init state / an unknown state). *)
 let pred_of r ~equal s =
   Option.map snd

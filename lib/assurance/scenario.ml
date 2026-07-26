@@ -316,11 +316,35 @@ let vsts_cluster : Cluster.t =
    both counters advance strictly past them (to 2 / 1) — the same uid/rv/counter
    shape {!seed} carries, obtained legitimately. The VSTS controller sits at
    {!controller_id} with an empty {!Controller.init} reconcile state (the reconcile
-   is scheduled during exploration, exactly as for {!seed}); [fair] gates the three
-   disruptor toggles together ([false] = full nondeterminism for safety, [true] =
-   the fair suffix for ESR). *)
-let vsts_seed ~desired ~fair : Cluster.cluster_state =
-  let enabled = not fair in
+   is scheduled during exploration, exactly as for {!seed}).
+
+   The three disruptor toggles are INDEPENDENT here ([vsts_seed] below is the
+   all-three-together specialisation): [crash] is the controller's
+   [crash_enabled] (Anvil's [RestartController] fault), [req_drop] the
+   api-server transient-failure switch, [pod_monkey] the pod disruptor. P13
+   needs them separable to isolate the crash dimension.
+
+   Soundness of a seed with any flag FALSE (BUILD-SPEC-P13 §3): [Cluster.init]
+   (cluster.ml:75-97) requires all three flags TRUE, so such a seed is not an
+   init state. Exploring from it is still sound because every flag combination
+   componentwise <= [(true, true, true)] is reachable from an init state by a
+   prefix of [Disable_crash_step] / [Disable_req_drop_step] /
+   [Disable_pod_monkey_step], each of which only flips its own flag
+   (cluster.ml:337, :385, :445). So a violation found from such a seed is a
+   violation of a genuinely reachable behaviour; a clean verdict is
+   falsification-up-to-bounds of the SUFFIX behaviours starting there. The
+   pre-existing [~fair:true] seeds already rest on exactly this argument (they
+   are the all-disabled suffix).
+
+   MEASURED (contra BUILD-SPEC-P13 §3, which predicts otherwise): even the
+   all-faults-ON seed does NOT satisfy [Cluster.init], because [Api_server.init]
+   (api_server.ml:73) demands an EMPTY etcd while the seed already holds the
+   server-created CR. It satisfies every FAULT-FLAG conjunct of [Cluster.init],
+   and that is the part P13 needs; the already-created CR rests on the same
+   standing "a client created the CR first" argument every seed here rests on.
+   See scenario.mli for the isolating measurement. *)
+let vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey :
+    Cluster.cluster_state =
   let created, _ =
     Api_server.handle_create_request vsts_installed
       {
@@ -340,14 +364,22 @@ let vsts_seed ~desired ~fair : Cluster.cluster_state =
         {
           Cluster.controller = Controller.init;
           external_ = None;
-          crash_enabled = enabled;
+          crash_enabled = crash;
         }
         Imap.empty;
     network = { Network.in_flight = Message.Pool.empty };
     rpc_id_allocator = Message.Rpc_id_allocator.init ();
-    req_drop_enabled = enabled;
-    pod_monkey_enabled = enabled;
+    req_drop_enabled = req_drop;
+    pod_monkey_enabled = pod_monkey;
   }
+
+(* {!vsts_seed_faults} with the three disruptor toggles gated TOGETHER by [fair]
+   ([false] = full nondeterminism for safety, [true] = the fair suffix for ESR):
+   a thin delegation with all three flags = [not fair], so behaviour is
+   byte-identical to the pre-P13 body. *)
+let vsts_seed ~desired ~fair : Cluster.cluster_state =
+  vsts_seed_faults ~desired ~crash:(not fair) ~req_drop:(not fair)
+    ~pod_monkey:(not fair)
 
 (* The multi-CR analogue of [vsts_seed]: one VStatefulSet [vstsN] per element of
    [desireds] (distinct names "vsts1".."vstsN" => distinct [Object_ref_map] keys),
@@ -360,11 +392,12 @@ let vsts_seed ~desired ~fair : Cluster.cluster_state =
    under the single [controller_id]) — the P12 non-vacuity witness for
    [Invariants.unique_reconcile_id_invariant], unreachable from the single-CR
    [vsts_seed]. All CRs are the SAME kind, so [vsts_installed] is reused unchanged.
-   [fair] gates the three disruptor toggles together, exactly as [vsts_seed]. The
+   The three disruptor toggles are INDEPENDENT here, exactly as in
+   [vsts_seed_faults], and the same BUILD-SPEC-P13 §3 reachability argument makes
+   an any-flag-false seed sound (the Disable_* prefix from an init state). The
    VSTS analogue of [seed_multi]. *)
-let vsts_seed_multi ~(desireds : int list) ~(fair : bool) :
-    Cluster.cluster_state =
-  let enabled = not fair in
+let vsts_seed_multi_faults ~(desireds : int list) ~(crash : bool)
+    ~(req_drop : bool) ~(pod_monkey : bool) : Cluster.cluster_state =
   let created =
     List.fold_left
       (fun (api : Api_server.state) ((i, desired) : int * int) ->
@@ -392,14 +425,22 @@ let vsts_seed_multi ~(desireds : int list) ~(fair : bool) :
         {
           Cluster.controller = Controller.init;
           external_ = None;
-          crash_enabled = enabled;
+          crash_enabled = crash;
         }
         Imap.empty;
     network = { Network.in_flight = Message.Pool.empty };
     rpc_id_allocator = Message.Rpc_id_allocator.init ();
-    req_drop_enabled = enabled;
-    pod_monkey_enabled = enabled;
+    req_drop_enabled = req_drop;
+    pod_monkey_enabled = pod_monkey;
   }
+
+(* {!vsts_seed_multi_faults} with the three disruptor toggles gated TOGETHER by
+   [fair], exactly as [vsts_seed] does for [vsts_seed_faults]: a thin delegation
+   with all three flags = [not fair], byte-identical to the pre-P13 body. *)
+let vsts_seed_multi ~(desireds : int list) ~(fair : bool) :
+    Cluster.cluster_state =
+  vsts_seed_multi_faults ~desireds ~crash:(not fair) ~req_drop:(not fair)
+    ~pod_monkey:(not fair)
 
 (* A reachable (NOT [Cluster.init]) state: etcd already holds [vrs ~desired] under
    [vrs_ref] with uid 1 / rv 0, and the api-server counters sit strictly above them
