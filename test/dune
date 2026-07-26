@@ -9,7 +9,8 @@
    t_p7_controller_runtime t_p7_mutation t_p8_settle t_p8_mutation
    t_v_deployment t_v_deployment_reconciler t_p9_two_controller t_p9_mutation
    t_v_stateful_set t_v_stateful_set_reconciler t_p10_witness t_p10_mutation
-   t_p11_vsts_invariants t_p11_vsts_esr t_p11_vsts_liveness t_p11_mutation)
+   t_p11_vsts_invariants t_p11_vsts_esr t_p11_vsts_liveness t_p11_mutation
+   t_p12_concurrent t_p12_mutation)
  (libraries anvil_support anvil_k8s_objects anvil_state_machine anvil_reconciler
    anvil_cluster anvil_controllers anvil_assurance anvil_checker anvil_proof
    anvil_exec comp_cat alcotest qcheck-core qcheck-alcotest)

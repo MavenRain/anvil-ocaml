@@ -226,19 +226,28 @@ let vsts_pvc_template : Persistent_volume_claim.t =
    ([ss_spec_default]), so all nine clauses of [V_stateful_set.state_validation]
    hold and [controller_owner_ref] is [Some]. Mirrors the [vrs]/[vd] builder
    argument style ([~desired]), with [?vct] gating the storage template. *)
-let vsts ~desired ?(vct = false) () : V_stateful_set.t =
-  V_stateful_set.make ~metadata:vsts_metadata
+let vsts_named ~(name : string) ?(vct = false) ~(desired : int) () :
+    V_stateful_set.t =
+  let metadata = { vsts_metadata with Object_meta.name = Some name } in
+  V_stateful_set.make ~metadata
     ~spec:
       {
         (Stateful_set.ss_spec_default ()) with
         Stateful_set.replicas = Some desired;
         selector;
         template;
-        service_name = "vsts1";
+        service_name = name;
         volume_claim_templates =
           (if vct then Some [ vsts_pvc_template ] else None);
       }
     ~status:None
+
+(* [vsts ~desired ?vct ()] delegates to [vsts_named ~name:"vsts1"]. For that name
+   [{ vsts_metadata with name = Some "vsts1" }] is [vsts_metadata] itself and
+   [service_name = "vsts1"], so the result is BYTE-IDENTICAL to the former hardcoded
+   body — the green P10/P11 battery is the behavior-preservation proof. *)
+let vsts ~(desired : int) ?(vct = false) () : V_stateful_set.t =
+  vsts_named ~name:"vsts1" ~vct ~desired ()
 
 let vsts_ref : Common.object_ref =
   { Common.kind = V_stateful_set.kind; name = "vsts1"; namespace = "ns" }
@@ -323,6 +332,58 @@ let vsts_seed ~desired ~fair : Cluster.cluster_state =
         uid_counter = 1;
         resource_version_counter = 0;
       }
+  in
+  {
+    Cluster.api_server = created;
+    controller_and_externals =
+      Imap.add controller_id
+        {
+          Cluster.controller = Controller.init;
+          external_ = None;
+          crash_enabled = enabled;
+        }
+        Imap.empty;
+    network = { Network.in_flight = Message.Pool.empty };
+    rpc_id_allocator = Message.Rpc_id_allocator.init ();
+    req_drop_enabled = enabled;
+    pod_monkey_enabled = enabled;
+  }
+
+(* The multi-CR analogue of [vsts_seed]: one VStatefulSet [vstsN] per element of
+   [desireds] (distinct names "vsts1".."vstsN" => distinct [Object_ref_map] keys),
+   each admitted through a REAL [Api_server.handle_create_request] against a single
+   fresh api-server, so every uid/rv is SERVER-STAMPED (never forged) and the
+   counters advance strictly past every issued value — inv1
+   ([etcd_objects_have_unique_uids]) stays true because each create bumps
+   [uid_counter]. Distinct keys let the reachable graph reach
+   [cardinal(ongoing) >= 2] (each CR admits its own concurrent ongoing reconcile
+   under the single [controller_id]) — the P12 non-vacuity witness for
+   [Invariants.unique_reconcile_id_invariant], unreachable from the single-CR
+   [vsts_seed]. All CRs are the SAME kind, so [vsts_installed] is reused unchanged.
+   [fair] gates the three disruptor toggles together, exactly as [vsts_seed]. The
+   VSTS analogue of [seed_multi]. *)
+let vsts_seed_multi ~(desireds : int list) ~(fair : bool) :
+    Cluster.cluster_state =
+  let enabled = not fair in
+  let created =
+    List.fold_left
+      (fun (api : Api_server.state) ((i, desired) : int * int) ->
+        let name = "vsts" ^ string_of_int i in
+        let api', _ =
+          Api_server.handle_create_request vsts_installed
+            {
+              Api_method.namespace = "ns";
+              obj = V_stateful_set.marshal (vsts_named ~name ~desired ());
+            }
+            api
+        in
+        api')
+      {
+        Api_server.resources = Object_ref_map.empty;
+        uid_counter = 1;
+        resource_version_counter = 0;
+      }
+      (List.mapi (fun idx d -> (idx + 1, d)) desireds)
   in
   {
     Cluster.api_server = created;

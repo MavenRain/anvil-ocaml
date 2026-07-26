@@ -41,6 +41,13 @@ type invariant = {
           fires is checked vacuously and the bounds must be widened. *)
 }
 
+val unique_reconcile_id_invariant : controller_id:int -> invariant
+(** Invariant #6 [every_ongoing_reconcile_has_unique_id] as a standalone handle
+    (Anvil controller_runtime_safety.rs:874): over [Cluster.ongoing_reconciles s
+    controller_id], every ongoing reconcile's [reconcile_id] is distinct. [interesting]
+    fires iff >= 2 concurrent ongoing reconciles for [controller_id] — the P12 non-vacuity
+    witness. The single source of truth for both [cluster_structural] and [partition]. *)
+
 val cluster_structural : controller_id:int -> invariant list
 (** The shared cluster-level etcd/runtime-safety invariants inv1-6 (unique uids,
     weakly-well-formed + uid/rv monotone, <= 1 controller owner, scheduled/triggering

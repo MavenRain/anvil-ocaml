@@ -295,3 +295,46 @@ val check_esr_temporal_vsts :
     bound-artifact caveat applies as for {!check_esr_settled_vsts}: interpret a
     [Refuted] only where [max_uid_seen]/[max_rv_seen] stayed strictly below their
     ceilings. *)
+
+(* ---- BUILD-SPEC-P12 §4: the concurrent-reconcile uniqueness gates. The
+   assurance-construction leg that de-vacuifies invariant #6
+   [every_ongoing_reconcile_has_unique_id] — checked at genuinely ≥2-concurrent
+   ongoing-reconcile states via the multi-CR seeds. No model change: P2 already
+   represents concurrent reconciles of ONE controller (§0). ---- *)
+
+val check_unique_reconcile_id_vsts : ?depth:int -> Bound.t -> desireds:int list -> report
+(** CONCURRENCY-SAFETY leg (P12). Seed [Scenario.vsts_seed_multi ~desireds ~fair:true]
+    (one VSTS CR per element, all under the single [controller_id]), explored over
+    [Scenario.vsts_cluster]; refute inv6 [Invariants.unique_reconcile_id_invariant] by
+    reachability ([Model_check.check_safety]). [report.gate_states] counts the reachable
+    states with ≥2 concurrent ongoing reconciles (inv6's [interesting]): [Some n], [n>0]
+    means the uniqueness universal is checked at genuinely-concurrent states
+    (NON-VACUOUS); [Some 0] means it was never exercised (the single-CR vacuity of the
+    P11 pin). A clean [No_counterexample {decisive=true}] with [n>0] verifies, up to the
+    bound, that concurrent reconciles always carry distinct [reconcile_id]s; [Refuted]
+    ([violated = Some inv6]) exhibits a real run with an id collision. Needs a [desireds]
+    of length ≥2 AND a [reconcile_ceiling] ≥ (number of concurrent starts) — each
+    [run_scheduled_reconcile] advances the shared per-controller reconcile counter, so
+    reaching [cardinal(ongoing)=k] needs [reconcile_ceiling ≥ k].
+
+    BINDING-DIMENSION DISCLOSURE (P12 review finding, differs from the uid/rv gates):
+    for THIS gate the binding ceiling is [reconcile_ceiling], NOT uid/rv — at the witness
+    it sits AT its ceiling and [report.pruned = true] (raising it strictly grows the graph
+    and eventually flips [decisive]), whereas [max_uid_seen]/[max_rv_seen] stay strictly
+    below their ceilings. This is NOT a soundness gap: uniqueness holds CONSTRUCTIONALLY —
+    [Controller.Reconcile_id_allocator.allocate] hands out a strictly-monotone fresh id per
+    reconcile start, so distinct ongoing reconciles carry distinct [reconcile_id]s at ANY
+    ceiling and a [Refuted] can never arise from the real allocator. The [reconcile_ceiling]
+    clip therefore bounds COVERAGE / [decisive], never the truth of the universal; the
+    strict-below-ceiling bound-artifact discipline (BUILD-SPEC-P8 §4 / P11 §7.3) applies to
+    the uid/rv dimensions (which hold), while the reconcile dimension's guarantee is the
+    constructional one above. [report] carries no [max_reconcile_id_seen] field, so this
+    clause — not a self-certifying maximum — is how the reconcile dimension is disclosed.
+    HONEST LIMIT: bounded falsification up to [depth] and [Bound.t]; transfers no part of
+    Anvil's Verus theorem (arch §4). *)
+
+val check_unique_reconcile_id_vrs : ?depth:int -> Bound.t -> desireds:int list -> report
+(** The VReplicaSet sibling — same gate over [Scenario.seed_multi] / [Scenario.cluster].
+    Demonstrates the P12 machinery generalizes across controllers and cross-checks the
+    existing [t_p4_enumerator] VRS non-vacuity witness. Same contract as
+    [check_unique_reconcile_id_vsts]. *)

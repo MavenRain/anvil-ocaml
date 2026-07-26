@@ -587,6 +587,68 @@ let check_esr_vsts ?(depth = default_depth) (bound : Bound.t) ~desired : report 
   in
   { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated = None; gate_states }
 
+(* ---- BUILD-SPEC-P12 §4: the concurrent-reconcile uniqueness gate. ----
+
+   De-vacuifies invariant #6 [every_ongoing_reconcile_has_unique_id]
+   ({!Invariants.unique_reconcile_id_invariant}) — a SAFETY universal that the
+   single-CR P11 seed never exercises (its [interesting] — ≥2 concurrent ongoing
+   reconciles — fires nowhere, so the P11 pin measures 0, a TRUE-but-vacuous
+   count). This is an ASSURANCE-CONSTRUCTION leg, NOT a model change: the P2
+   transition system already represents ≥2 concurrent in-flight reconciles of ONE
+   controller ([ongoing_reconciles] is keyed per cr [object_ref], the
+   [run_scheduled_reconcile] precondition gates per-cr-key). The multi-CR seed
+   ({!Scenario.vsts_seed_multi} / {!Scenario.seed_multi}) reaches
+   [cardinal(ongoing) ≥ 2] so the universal is checked at genuinely-concurrent
+   states, and [report.gate_states = Some n] counts them: [Some 0] ⟺ vacuous (the
+   P11 single-CR case), [Some n>0] ⟺ genuinely exercised — the exact structural
+   parallel to {!check_esr_settled_vsts}'s [settled] gate count (P8 discipline).
+
+   The shared helper reuses the EXACT report-building machinery of the [check_*]
+   gates above: {!bounded_successors} + {!Model_check.explore} for the reachable
+   graph, {!Model_check.check_safety} to refute inv6's [holds] by reachability
+   (arch §0.1.1: safety is reachability), and the SAME {!collect_metadata} fold
+   for [max_uid_seen]/[max_rv_seen]/[pruned] that every other gate calls (no new
+   fold). [gate_states] is {!Model_check.count_states_where} over inv6's
+   [interesting] (≥2 concurrent). The [outcome] match is exhaustive over the two
+   named {!Model_check.outcome} arms — no wildcard. *)
+
+let check_unique_reconcile_id_from ~(depth : int) (bound : Bound.t)
+    (cluster : Cluster.t) ~(seed : Cluster.cluster_state) ~(controller_id : int) :
+    report =
+  let inv = Invariants.unique_reconcile_id_invariant ~controller_id in
+  let successors = bounded_successors bound cluster in
+  let reach =
+    Model_check.explore ~depth ~successors ~equal:state_equal ~hash:state_hash
+      ~init:[ seed ]
+  in
+  let outcome =
+    Model_check.check_safety reach ~inv:inv.holds ~equal:state_equal
+  in
+  let max_uid_seen, max_rv_seen, pruned =
+    collect_metadata ~depth ~bound ~cluster ~init:[ seed ]
+  in
+  let gate_states =
+    Some (Model_check.count_states_where reach inv.interesting)
+  in
+  let violated =
+    match outcome with
+    | Model_check.Refuted _ -> Some inv
+    | Model_check.No_counterexample _ -> None
+  in
+  { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated; gate_states }
+
+let check_unique_reconcile_id_vsts ?(depth = default_depth) (bound : Bound.t)
+    ~(desireds : int list) : report =
+  check_unique_reconcile_id_from ~depth bound Scenario.vsts_cluster
+    ~seed:(Scenario.vsts_seed_multi ~desireds ~fair:true)
+    ~controller_id:Scenario.controller_id
+
+let check_unique_reconcile_id_vrs ?(depth = default_depth) (bound : Bound.t)
+    ~(desireds : int list) : report =
+  check_unique_reconcile_id_from ~depth bound Scenario.cluster
+    ~seed:(Scenario.seed_multi ~desireds ~fair:true)
+    ~controller_id:Scenario.controller_id
+
 (* P11 §5: the formula-faithful VSTS cross-check — the VSTS sibling of
    {!check_esr_temporal}. The goal is the actual {!Esr}-functor formula
    [Esr.Make(V_stateful_set).eventually_stable_reconciliation_per_cr] over the

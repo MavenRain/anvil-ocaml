@@ -29,7 +29,10 @@
        decisive fair:true graph is MEASURED and PINNED. Content-bearing + inv1-5
        are positive; two are DISCLOSED vacuous (not tuned away):
        - inv6 [every_ongoing_reconcile_has_unique_id] needs >= 2 concurrent
-         reconciles (a multi-CR seed) : 0.
+         reconciles (a multi-CR seed) : 0 here. P12 supplies that witness:
+         [Cluster_check.check_unique_reconcile_id_vsts] over the multi-CR
+         [Scenario.vsts_seed_multi] de-vacuifies inv6 (gate_states > 0),
+         while this single-CR pin genuinely stays 0.
        - [owned_pvcs_bound_to_vsts] is vacuous BY CONSTRUCTION - the faithful
          [make_pvc] stamps no owner-ref on PVCs, so the owned-PVC set is empty in
          every reachable state (even vct:true) : 0. (§0 honest-vacuity precedent.)
@@ -161,7 +164,7 @@ let pinned_interesting : (string * int) list =
     ("each_object_in_etcd_has_at_most_one_controller_owner", 38);
     ("scheduled_cr_has_lower_uid_than_uid_counter", 25);
     ("triggering_cr_has_lower_uid_than_uid_counter", 44);
-    ("every_ongoing_reconcile_has_unique_id", 0 (* DISCLOSED: needs >=2 reconciles *));
+    ("every_ongoing_reconcile_has_unique_id", 0 (* DISCLOSED: single-CR seed => 0 here (TRUE); the >=2-concurrent witness is supplied by P12 Cluster_check.check_unique_reconcile_id_vsts *));
     ("vsts_reconcile_request_only_interferes_with_itself", 12);
     ("owned_pods_have_wellformed_ordinal_identity", 38);
     ("owned_pvcs_bound_to_vsts", 0 (* DISCLOSED: make_pvc stamps no PVC owner-ref *));

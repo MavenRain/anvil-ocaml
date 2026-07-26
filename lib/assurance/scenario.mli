@@ -59,6 +59,12 @@ val vsts : desired:int -> ?vct:bool -> unit -> V_stateful_set.t
     Seeded by the P10 VStatefulSet witness; additive to the vrs-only
     {!cluster}. *)
 
+val vsts_named : name:string -> ?vct:bool -> desired:int -> unit -> V_stateful_set.t
+(** {!vsts} with a parameterized metadata [name] and [service_name] (both = [name]);
+    the per-CR builder behind {!vsts_seed_multi}. Reuses the {!vsts} metadata base and
+    overrides only the name, so [vsts_named ~name:"vsts1" ~vct ~desired ()] is
+    byte-identical to [vsts ~desired ?vct ()] — [vsts] is now a thin delegation. *)
+
 val vsts_ref : Common.object_ref
 (** The VStatefulSet CR key
     [{ kind = ]{!V_stateful_set.kind}[; name = "vsts1"; namespace = "ns" }]. *)
@@ -89,6 +95,15 @@ val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
     controller is scheduled at {!controller_id} ([Controller.init] reconcile state);
     disruptors gated by [fair] ([false] = full nondeterminism for safety; [true] =
     the fair suffix for ESR). *)
+
+val vsts_seed_multi : desireds:int list -> fair:bool -> Cluster.cluster_state
+(** A multi-CR VSTS seed: one VStatefulSet [vstsN] per element of [desireds], each
+    created through a real {!Api_server.handle_create_request} (uid/rv server-stamped,
+    distinct keys), all under the single {!controller_id}. Unlike {!vsts_seed} (one CR
+    => [ongoing_reconciles] never holds >= 2 => inv6 vacuous), a >= 2-element
+    [desireds] lets the reachable graph reach [cardinal(ongoing) >= 2], the
+    non-vacuity witness for {!Invariants.unique_reconcile_id_invariant}. The VSTS
+    analogue of {!seed_multi}. [~fair] as in {!vsts_seed}. *)
 
 val seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** A reachable initial cluster state: the {!Cluster.init} shape (empty controller

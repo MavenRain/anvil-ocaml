@@ -108,6 +108,30 @@ let current_state_matches (cr : Vreplica_set.t) (s : Cluster.cluster_state) : bo
                  vs.replicas
                  = Option.value ~default:1 (Vreplica_set.spec evrs).replicas)))
 
+(* Invariant #6 [every_ongoing_reconcile_has_unique_id]
+   (kubernetes_cluster/proof/controller_runtime_safety.rs:874) as a standalone
+   top-level handle: the SINGLE source of truth referenced by both
+   {!cluster_structural} and {!partition} (and the P12 non-vacuity gate). Over
+   [Cluster.ongoing_reconciles s controller_id], every ongoing reconcile's
+   [reconcile_id] is distinct; [interesting] fires iff >= 2 concurrent ongoing
+   reconciles exist for [controller_id] — the P12 witness. *)
+let unique_reconcile_id_invariant ~(controller_id : int) : invariant =
+  let ongoing s = Cluster.ongoing_reconciles s controller_id in
+  {
+    name = "every_ongoing_reconcile_has_unique_id";
+    source = "kubernetes_cluster/proof/controller_runtime_safety.rs:874";
+    holds =
+      (fun s ->
+        let ids =
+          List.map
+            (fun (_k, (orc : Controller.ongoing_reconcile)) -> orc.reconcile_id)
+            (Object_ref_map.bindings (ongoing s))
+        in
+        List.length (List.sort_uniq compare ids) = List.length ids);
+    (* NB: only non-vacuous with >= 2 concurrent reconciles. *)
+    interesting = (fun s -> Object_ref_map.cardinal (ongoing s) >= 2);
+  }
+
 (* GAP-2 (BUILD-SPEC-P11 §4): the shared cluster-level etcd/runtime-safety
    invariants inv1-6, independent of any CR (sourced from Anvil's
    [kubernetes_cluster] proofs, NOT [vreplicaset_controller]). Both {!always}
@@ -222,22 +246,7 @@ let cluster_structural ~controller_id =
     }
   in
   (* ---- #6 every_ongoing_reconcile_has_unique_id ------------------------ *)
-  let inv6 =
-    {
-      name = "every_ongoing_reconcile_has_unique_id";
-      source = "kubernetes_cluster/proof/controller_runtime_safety.rs:874";
-      holds =
-        (fun s ->
-          let ids =
-            List.map
-              (fun (_k, (orc : Controller.ongoing_reconcile)) -> orc.reconcile_id)
-              (Object_ref_map.bindings (ongoing s))
-          in
-          List.length (List.sort_uniq compare ids) = List.length ids);
-      (* NB: only non-vacuous with >= 2 concurrent reconciles. *)
-      interesting = (fun s -> Object_ref_map.cardinal (ongoing s) >= 2);
-    }
-  in
+  let inv6 = unique_reconcile_id_invariant ~controller_id in
   [ inv1; inv2; inv3; inv4; inv5; inv6 ]
 
 (* Builds every record once and returns the authoritative partition as
@@ -469,23 +478,7 @@ let partition ~cr ~controller_id =
     }
   in
   (* ---- #6 every_ongoing_reconcile_has_unique_id ------------------------- *)
-  let inv6 =
-    {
-      name = "every_ongoing_reconcile_has_unique_id";
-      source = "kubernetes_cluster/proof/controller_runtime_safety.rs:874";
-      holds =
-        (fun s ->
-          let ids =
-            List.map
-              (fun (_k, (orc : Controller.ongoing_reconcile)) -> orc.reconcile_id)
-              (Object_ref_map.bindings (ongoing s))
-          in
-          List.length (List.sort_uniq compare ids) = List.length ids);
-      (* NB: only non-vacuous with >= 2 concurrent reconciles; the single-CR
-         scenario cannot reach it (enumerator must widen to >= 2 CRs). *)
-      interesting = (fun s -> Object_ref_map.cardinal (ongoing s) >= 2);
-    }
-  in
+  let inv6 = unique_reconcile_id_invariant ~controller_id in
   (* ---- #7 garbage_collector_does_not_delete_vrs_pods --------------------- *)
   let gc_ok (req : Api_method.api_request) s =
     let open Api_method in
