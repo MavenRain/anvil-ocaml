@@ -270,6 +270,76 @@ let vsts_installed : Api_server.installed_types =
           Value.of_json `Null);
   }
 
+(* The VSTS controller model: the erased VStatefulSet pack ([V_stateful_set_pack.
+   Controller]) coerced to the [Value.t]-based [CONTROLLER] the cluster's
+   heterogeneous [Imap] stores, exactly as {!controller_model} does for the vrs
+   pack. The pack's extra [R.k = V_stateful_set.t] equality is dropped by the
+   coercion (only [R.s]/[R.ereq]/[R.eresp] are constrained). *)
+let vsts_controller_model : Cluster.controller_model =
+  {
+    Cluster.reconciler =
+      (module V_stateful_set_pack.Controller
+      : Controller_pack.CONTROLLER
+        with type R.s = Value.t
+         and type R.ereq = Value.t
+         and type R.eresp = Value.t);
+    kind = V_stateful_set.kind;
+    external_model = None;
+  }
+
+(* The runnable VSTS cluster: built EXACTLY as {!cluster} but with
+   [installed_types = vsts_installed] (admits the VStatefulSet CR + its Pods +
+   PVCs) and a single controller model = the {!V_stateful_set_pack} controller at
+   {!controller_id}. This is the [Cluster.t] the VSTS BMC/ESR legs explore and the
+   [Cluster.t] the generalized {!productive_successors} / {!Cluster_check.settled}
+   enumerate over. *)
+let vsts_cluster : Cluster.t =
+  {
+    Cluster.installed_types = vsts_installed;
+    controller_models = Imap.add controller_id vsts_controller_model Imap.empty;
+  }
+
+(* A reachable initial state for the VSTS cluster, the mirror of {!seed}: the
+   {!vsts}[ ~desired] CR ([?vct:false] default) is put into etcd by a REAL
+   {!Api_server.handle_create_request} against a fresh empty api-server
+   ([uid_counter = 1], [resource_version_counter = 0]), so its uid (1) and
+   resource_version (0) are STAMPED by the server (never forged into metadata) and
+   both counters advance strictly past them (to 2 / 1) — the same uid/rv/counter
+   shape {!seed} carries, obtained legitimately. The VSTS controller sits at
+   {!controller_id} with an empty {!Controller.init} reconcile state (the reconcile
+   is scheduled during exploration, exactly as for {!seed}); [fair] gates the three
+   disruptor toggles together ([false] = full nondeterminism for safety, [true] =
+   the fair suffix for ESR). *)
+let vsts_seed ~desired ~fair : Cluster.cluster_state =
+  let enabled = not fair in
+  let created, _ =
+    Api_server.handle_create_request vsts_installed
+      {
+        Api_method.namespace = "ns";
+        obj = V_stateful_set.marshal (vsts ~desired ());
+      }
+      {
+        Api_server.resources = Object_ref_map.empty;
+        uid_counter = 1;
+        resource_version_counter = 0;
+      }
+  in
+  {
+    Cluster.api_server = created;
+    controller_and_externals =
+      Imap.add controller_id
+        {
+          Cluster.controller = Controller.init;
+          external_ = None;
+          crash_enabled = enabled;
+        }
+        Imap.empty;
+    network = { Network.in_flight = Message.Pool.empty };
+    rpc_id_allocator = Message.Rpc_id_allocator.init ();
+    req_drop_enabled = enabled;
+    pod_monkey_enabled = enabled;
+  }
+
 (* A reachable (NOT [Cluster.init]) state: etcd already holds [vrs ~desired] under
    [vrs_ref] with uid 1 / rv 0, and the api-server counters sit strictly above them
    (uid_counter 2 > 1, resource_version_counter 1 > 0) so Invariants #2's [< counter]
@@ -485,8 +555,8 @@ let seed_with_orphan ~desired ~fair : Cluster.cluster_state =
    controller step, a schedule step, a pod-monkey step, an external step. The no-op
    / failure / liveness-toggle families are dropped. The [Step.t] match is
    exhaustive (all 12 constructors, no wildcard). *)
-let productive_successors (b : Bound.t) (s : Cluster.cluster_state) :
-    (Step.t * Cluster.cluster_state) list =
+let productive_successors (t : Cluster.t) (b : Bound.t)
+    (s : Cluster.cluster_state) : (Step.t * Cluster.cluster_state) list =
   List.filter
     (fun ((step : Step.t), (_ : Cluster.cluster_state)) ->
       match step with
@@ -504,7 +574,7 @@ let productive_successors (b : Bound.t) (s : Cluster.cluster_state) :
       | Step.Disable_pod_monkey_step
       | Step.Stutter_step ->
         false)
-    (Cluster.enabled_successors b cluster s)
+    (Cluster.enabled_successors b t s)
 
 let is_quiescent (b : Bound.t) (s : Cluster.cluster_state) : bool =
-  productive_successors b s = []
+  productive_successors cluster b s = []

@@ -159,7 +159,23 @@ let bounded_successors (bound : Bound.t) (cluster : Cluster.t)
 let effectively_quiescent (bound : Bound.t) (s : Cluster.cluster_state) : bool =
   List.for_all
     (fun (_step, s') -> state_equal s s')
-    (Scenario.productive_successors bound s)
+    (Scenario.productive_successors Scenario.cluster bound s)
+
+(* The VSTS sibling of {!effectively_quiescent}: the SAME unpruned "no
+   state-changing productive successor" notion, but its productive successors are
+   enumerated over {!Scenario.vsts_cluster} (the runnable VSTS registry +
+   installed types), not the VRS {!Scenario.cluster}. Used by the honest VACUOUS
+   companion {!check_esr_vsts}: on the perpetually re-triggered VSTS model this
+   stays structurally unreachable at every feasible bound (the reschedule re-arms
+   non-idempotently, exactly as for VRS — [effectively_quiescent]'s HONEST LIMIT),
+   so its gate count is [Some 0]. The ceiling-pruned {!settled} is the non-vacuous
+   VSTS gate ({!check_esr_settled_vsts}); this one exists only to make the
+   settled-vs-unsettled contrast VISIBLE (P8 discipline). *)
+let effectively_quiescent_vsts (bound : Bound.t) (s : Cluster.cluster_state) :
+    bool =
+  List.for_all
+    (fun (_step, s') -> state_equal s s')
+    (Scenario.productive_successors Scenario.vsts_cluster bound s)
 
 (* ---- P8 settling gate (BUILD-SPEC-P8 §1): the reconcile-bounded refinement
    of {!effectively_quiescent}. Identical intent — no state-changing productive
@@ -176,17 +192,18 @@ let effectively_quiescent (bound : Bound.t) (s : Cluster.cluster_state) : bool =
    which stays vacuous on this scenario (its HONEST LIMIT above). CAVEAT: the
    filter applies ALL ceilings, so a bound whose uid/rv ceilings bite mid-pass
    can manufacture a starved non-matching "settled" state — see the .mli
-   interpretation discipline for {!check_esr_settled}'s [Refuted]. The [_cluster] parameter is unused today (productive
-   successors come from {!Scenario}); it keeps the signature parallel to the
-   driver wiring. *)
+   interpretation discipline for {!check_esr_settled}'s [Refuted]. The [cluster]
+   parameter SELECTS which installed cluster's productive successors are
+   enumerated: the VRS legs pass {!Scenario.cluster} (behaviour identical to the
+   former [Scenario]-hardwired form), the VSTS legs pass {!Scenario.vsts_cluster}. *)
 
-let settled (bound : Bound.t) (_cluster : Cluster.t) (s : Cluster.cluster_state)
-    : bool =
+let settled (bound : Bound.t) (cluster : Cluster.t) (s : Cluster.cluster_state) :
+    bool =
   List.for_all
     (fun (_step, s') -> state_equal s s')
     (List.filter
        (fun (_step, s') -> not (over_ceiling bound s'))
-       (Scenario.productive_successors bound s))
+       (Scenario.productive_successors cluster bound s))
 
 (* ---- Fairness filter for {!check_esr_temporal} (BUG-3 fix). A lasso whose loop
    is a pure stutter/self-loop (every loop state [state_equal] to the first) at a
@@ -205,6 +222,40 @@ let fair_lasso (bound : Bound.t) (l : Cluster.cluster_state Model_check.lasso) :
   | s0 :: rest ->
       let pure_stutter = List.for_all (state_equal s0) rest in
       not (pure_stutter && not (effectively_quiescent bound s0))
+
+(* The VSTS sibling of {!fair_lasso} (BUILD-SPEC-P11 §5 / §7). Same fairness
+   notion — reject a pure-stutter loop that starves an enabled state-changing
+   productive step — but the quiescence is decided by the ceiling-pruned {!settled}
+   over {!Scenario.vsts_cluster}, NOT the VRS {!effectively_quiescent}. TWO reasons
+   the productive successors are enumerated over the VSTS cluster AND pruned:
+
+   (a) VSTS cluster, not VRS: the verbatim VRS [fair_lasso] enumerates productive
+   successors over {!Scenario.cluster}, whose registry runs the VReplicaSet
+   reconciler and whose installed types exclude the VSTS CR, so on a VStatefulSet
+   state it finds NO productive successor, wrongly deems every VSTS stutter state
+   quiescent, admits the seed-stutter lasso as a FAIR counterexample, and makes
+   {!check_esr_temporal_vsts} spuriously [Refuted] (MEASURED). DOCUMENTED DEVIATION
+   from the §5 prose, which named the reused [fair_lasso].
+
+   (b) pruned {!settled}, not unpruned {!effectively_quiescent_vsts} (the P11 review
+   NON-VACUITY fix): [effectively_quiescent_vsts] is structurally unreachable on the
+   perpetually re-triggered model ([gate_states = Some 0]), so gating on it would
+   deem EVERY pure-stutter lasso unfair — leaving NO fair lasso and a clean+decisive
+   verdict INDEPENDENT of the goal (a tautology, clean even for [fun _ _ -> false]).
+   Gating on {!settled} — reachable under the §7 [reconcile_ceiling = 1] bound
+   ([gate_states = Some 1]) — admits a genuinely FAIR pure-stutter at the settled
+   state, so {!check_esr_temporal_vsts} actually evaluates the ESR formula there:
+   the real target is clean (the settled state matches) and a broken target flips it
+   to [Refuted] ([t_p11_vsts_esr] "temporal_nonvacuous" pins both). Sound because
+   under this bound the settling maxima stay STRICTLY below the ceilings, so no
+   uid/rv-starved "settled" state exists (§7.3 caveat). *)
+let fair_lasso_vsts (bound : Bound.t)
+    (l : Cluster.cluster_state Model_check.lasso) : bool =
+  match Array.to_list l.Model_check.loop with
+  | [] -> true
+  | s0 :: rest ->
+      let pure_stutter = List.for_all (state_equal s0) rest in
+      not (pure_stutter && not (settled bound Scenario.vsts_cluster s0))
 
 (* ---- Finding-14 report metadata, computed soundly.
 
@@ -428,5 +479,148 @@ let check_esr_temporal ?(depth = default_depth) (bound : Bound.t) ~desired :
   in
   let gate_states =
     Some (Model_check.count_states_where reach (effectively_quiescent bound))
+  in
+  { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated = None; gate_states }
+
+(* ---- BUILD-SPEC-P11 §5: the VStatefulSet checker entry points ----
+
+   Structural mirrors of the four VRS [check_*] above, swapping the pinned
+   scenario/invariants/resource-view for their VSTS siblings:
+   [Scenario.vrs -> Scenario.vsts], [Scenario.cluster -> Scenario.vsts_cluster],
+   [Scenario.seed -> Scenario.vsts_seed], [Invariants -> Vsts_invariants],
+   [Esr.Make(Vreplica_set) -> Esr.Make(V_stateful_set)]. Every private helper
+   ([collect_metadata], [fair_lasso], [over_ceiling] via [bounded_successors],
+   [default_depth], [violated_of], [settled]) is reused unchanged — the generic
+   BMC engine + the P6/P8 machinery genuinely GENERALIZE to a second controller.
+   The four honest limits at the top of this module apply verbatim to the VSTS
+   legs. *)
+
+let check_always_vsts ?(depth = default_depth) (bound : Bound.t) ~desired : report
+    =
+  let cr = Scenario.vsts ~desired () in
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed = Scenario.vsts_seed ~desired ~fair:false in
+  let invs = Vsts_invariants.always ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  let successors = bounded_successors bound cluster in
+  let reach =
+    Model_check.explore ~depth ~successors ~equal:state_equal ~hash:state_hash
+      ~init:[ seed ]
+  in
+  let outcome = Model_check.check_safety reach ~inv ~equal:state_equal in
+  let max_uid_seen, max_rv_seen, pruned =
+    collect_metadata ~depth ~bound ~cluster ~init:[ seed ]
+  in
+  {
+    outcome;
+    bound;
+    max_uid_seen;
+    max_rv_seen;
+    pruned;
+    violated = violated_of invs outcome;
+    gate_states = None;
+  }
+
+(* P11 §5: the NON-VACUOUS VSTS ESR leg — the VSTS sibling of
+   {!check_esr_settled}. Fair seed, target = the {!Vsts_invariants.liveness_goal}
+   ordinal-stable match, gate = the ceiling-pruned {!settled} over
+   {!Scenario.vsts_cluster}, [gate_states] counting the reachable settled states.
+   Under the §7 VSTS settling bound ([reconcile_ceiling = 1]) the gate is
+   reachable iff the first reconcile pass reaches the match within the uid/rv
+   ceilings; [gate_states = Some n], [n > 0], with a clean outcome is a universal
+   checked at real states, decisively and NON-vacuously. The bound-artifact caveat
+   (§7.3) applies: a [Refuted] is only meaningful where [max_uid_seen]/[max_rv_seen]
+   stayed STRICTLY below their ceilings (a [t_p11_vsts_esr] test pins that the
+   settling bound does). *)
+let check_esr_settled_vsts ?(depth = default_depth) (bound : Bound.t) ~desired :
+    report =
+  let cr = Scenario.vsts ~desired () in
+  let cluster = Scenario.vsts_cluster in
+  let seed = Scenario.vsts_seed ~desired ~fair:true in
+  let target = (Vsts_invariants.liveness_goal ~cr).holds in
+  let quiescent = settled bound Scenario.vsts_cluster in
+  let successors = bounded_successors bound cluster in
+  let reach =
+    Model_check.explore ~depth ~successors ~equal:state_equal ~hash:state_hash
+      ~init:[ seed ]
+  in
+  let outcome =
+    Model_check.check_reaches reach ~target ~quiescent ~equal:state_equal
+  in
+  let max_uid_seen, max_rv_seen, pruned =
+    collect_metadata ~depth ~bound ~cluster ~init:[ seed ]
+  in
+  let gate_states =
+    Some
+      (Model_check.count_states_where reach (settled bound Scenario.vsts_cluster))
+  in
+  { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated = None; gate_states }
+
+(* P11 §5: the honest VACUOUS companion of {!check_esr_settled_vsts} — the VSTS
+   sibling of {!check_esr}. Same fair seed and target, but gated on the UNPRUNED
+   {!effectively_quiescent_vsts} (over {!Scenario.vsts_cluster}) instead of the
+   ceiling-pruned {!settled}. On the perpetually re-triggered VSTS model this gate
+   is structurally unreachable at every feasible bound (the reschedule re-arms
+   non-idempotently), so [gate_states = Some 0]: a clean outcome verifies NOTHING
+   (it is clean for [fun _ -> false]). Kept + cross-ref'd so the settled-vs-
+   unsettled contrast is VISIBLE (P8 discipline), NOT to add a verdict. *)
+let check_esr_vsts ?(depth = default_depth) (bound : Bound.t) ~desired : report =
+  let cr = Scenario.vsts ~desired () in
+  let cluster = Scenario.vsts_cluster in
+  let seed = Scenario.vsts_seed ~desired ~fair:true in
+  let target = (Vsts_invariants.liveness_goal ~cr).holds in
+  let quiescent = effectively_quiescent_vsts bound in
+  let successors = bounded_successors bound cluster in
+  let reach =
+    Model_check.explore ~depth ~successors ~equal:state_equal ~hash:state_hash
+      ~init:[ seed ]
+  in
+  let outcome =
+    Model_check.check_reaches reach ~target ~quiescent ~equal:state_equal
+  in
+  let max_uid_seen, max_rv_seen, pruned =
+    collect_metadata ~depth ~bound ~cluster ~init:[ seed ]
+  in
+  let gate_states =
+    Some (Model_check.count_states_where reach (effectively_quiescent_vsts bound))
+  in
+  { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated = None; gate_states }
+
+(* P11 §5: the formula-faithful VSTS cross-check — the VSTS sibling of
+   {!check_esr_temporal}. The goal is the actual {!Esr}-functor formula
+   [Esr.Make(V_stateful_set).eventually_stable_reconciliation_per_cr] over the
+   [?current_state_matches] target (default {!Vsts_invariants.current_state_matches};
+   the label is a TEST-ONLY seam for the non-vacuity witness). Evaluated over
+   enumerated lassos with the {!fair_lasso_vsts} fairness filter, which gates on the
+   ceiling-pruned {!settled} (reachable) so the formula is GENUINELY evaluated at the
+   settled state — see fair_lasso_vsts's note. NON-VACUOUS: a broken target flips
+   this to [Refuted] ([t_p11_vsts_esr] "temporal_nonvacuous"). Its class + [decisive]
+   flag AGREE with {!check_esr_settled_vsts} — a [t_p11_vsts_esr] test asserts the
+   agreement on the real target; disagreement is a bug in one of them. *)
+let check_esr_temporal_vsts ?(depth = default_depth)
+    ?(current_state_matches = Vsts_invariants.current_state_matches)
+    (bound : Bound.t) ~desired : report =
+  let cr = Scenario.vsts ~desired () in
+  let cluster = Scenario.vsts_cluster in
+  let seed = Scenario.vsts_seed ~desired ~fair:true in
+  let module E = Esr.Make (V_stateful_set) in
+  let goal =
+    E.eventually_stable_reconciliation_per_cr ~cr ~current_state_matches
+  in
+  let successors = bounded_successors bound cluster in
+  let outcome =
+    Model_check.check_temporal ~depth ~successors ~equal:state_equal
+      ~init:[ seed ] ~fair:(fair_lasso_vsts bound) ~goal ()
+  in
+  let max_uid_seen, max_rv_seen, pruned =
+    collect_metadata ~depth ~bound ~cluster ~init:[ seed ]
+  in
+  let reach =
+    Model_check.explore ~depth ~successors ~equal:state_equal ~hash:state_hash
+      ~init:[ seed ]
+  in
+  let gate_states =
+    Some (Model_check.count_states_where reach (effectively_quiescent_vsts bound))
   in
   { outcome; bound; max_uid_seen; max_rv_seen; pruned; violated = None; gate_states }

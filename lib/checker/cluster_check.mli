@@ -111,8 +111,9 @@ val settled : Bound.t -> Cluster.t -> Cluster.cluster_state -> bool
     Interpret a [Refuted] only under bounds where [max_uid_seen] /
     [max_rv_seen] stay STRICTLY below their ceilings (the BUILD-SPEC-P8 §4
     settling bounds do; t_p8_settle test 2 pins it). The [Cluster.t] parameter
-    is unused today (productive successors come from {!Scenario}); it keeps
-    the signature parallel to the driver wiring. *)
+    SELECTS which installed cluster's {!Scenario.productive_successors} are
+    enumerated: the VRS legs pass {!Scenario.cluster}, the VSTS legs
+    {!Scenario.vsts_cluster}. *)
 
 type report = {
   outcome : Cluster.cluster_state Model_check.outcome;
@@ -208,3 +209,89 @@ val check_esr_temporal : ?depth:int -> Bound.t -> desired:int -> report
     fair-ignore of Fix D is what makes [decisive] agree rather than being zeroed
     by the unfair stutter). The decision procedure and the P0 temporal evaluator
     cross-validate. *)
+
+(* ---- BUILD-SPEC-P11 §5: the VStatefulSet checker entry points. Structural
+   mirrors of the four VRS legs above, pinning the VSTS scenario / invariants /
+   resource-view; every helper is shared, demonstrating the BMC + P6/P8 machinery
+   generalizes past the first controller. All four honest limits documented above
+   apply verbatim. ---- *)
+
+val check_always_vsts : ?depth:int -> Bound.t -> desired:int -> report
+(** VSTS SAFETY leg — the {!check_always} sibling. Seed
+    [Scenario.vsts_seed ~desired ~fair:false] (full nondeterminism), invariant
+    [Invariants.conjunction (Vsts_invariants.always ~cr ~controller_id)] where
+    [cr = Scenario.vsts ~desired ()], explored over {!Scenario.vsts_cluster}
+    ({!Model_check.check_safety}); on [Refuted], [violated] names the broken VSTS
+    invariant. Only the [always] bucket (widened inv9 + ordinal-identity +
+    PVC-ownership). *)
+
+val check_esr_settled_vsts : ?depth:int -> Bound.t -> desired:int -> report
+(** VSTS NON-VACUOUS ESR leg — the {!check_esr_settled} sibling. Seed
+    [Scenario.vsts_seed ~desired ~fair:true], [target =
+    (Vsts_invariants.liveness_goal ~cr).holds] (the ordinal-stable
+    {!Vsts_invariants.current_state_matches}), gate [= ]{!settled}[ bound
+    Scenario.vsts_cluster], with {!report.gate_states} counting the reachable
+    settled states. Under the §7 VSTS settling bound ([reconcile_ceiling = 1],
+    uid/rv ceilings high enough to reach the first-pass create) the gate is
+    reachable, so [gate_states = Some n], [n > 0], and a clean outcome verifies
+    "every reachable settled state matches" decisively and NON-vacuously.
+
+    BOUND-ARTIFACT DISCIPLINE (§7.3): {!settled} filters through the full
+    {!over_ceiling}, so a bound whose uid/rv ceilings bite mid-pass manufactures
+    a starved non-matching "settled" state and a spurious [Refuted]. Interpret a
+    [Refuted] ONLY where [max_uid_seen]/[max_rv_seen] stay STRICTLY below their
+    ceilings (a {!check_esr_settled}-style [t_p11_vsts_esr] test pins that the
+    settling bound does). HONEST LIMIT: witnesses a BOUNDED number of reconcile
+    invocations settling to the match, never the perpetual re-reconcile; if the
+    tail is empirically vacuous at every feasible bound ([gate_states = Some 0]
+    with maxima strictly below ceilings), that is DISCLOSED via a measured
+    0-count witness, not tuned away (the P6 tail precedent). *)
+
+val check_esr_vsts : ?depth:int -> Bound.t -> desired:int -> report
+(** The honest VACUOUS companion of {!check_esr_settled_vsts} — the
+    {!check_esr} sibling. Same fair seed and target, but gated on the UNPRUNED
+    {!effectively_quiescent_vsts} (quiescence enumerated over
+    {!Scenario.vsts_cluster}) instead of the ceiling-pruned {!settled}. On the
+    perpetually re-triggered VSTS model this gate is structurally unreachable at
+    every feasible bound, so [gate_states = Some 0] and a clean run is a VACUOUS
+    universal (the target is evaluated at NO state). Kept + cross-ref'd so the
+    settled-vs-unsettled contrast is VISIBLE (P8 discipline), NOT to add a
+    verdict. *)
+
+val check_esr_temporal_vsts :
+  ?depth:int ->
+  ?current_state_matches:(V_stateful_set.t -> Cluster.cluster_state -> bool) ->
+  Bound.t ->
+  desired:int ->
+  report
+(** The formula-faithful VSTS cross-check — the {!check_esr_temporal} sibling.
+    Builds the ESR {!Comp_cat.Temporal.t} goal via
+    {!Esr.Make}[(V_stateful_set).eventually_stable_reconciliation_per_cr ~cr
+    ~current_state_matches] (default [current_state_matches =
+    Vsts_invariants.current_state_matches]) and evaluates it over enumerated
+    lassos ({!Model_check.check_temporal}) with the VSTS fairness filter
+    {!fair_lasso_vsts}.
+
+    NON-VACUITY (the P11 review fix): [fair_lasso_vsts] admits a pure-stutter loop
+    ONLY at a state that is {!settled} over {!Scenario.vsts_cluster} — the
+    ceiling-pruned P8 quiescence, which under the §7 settling bound IS reachable
+    ([gate_states = Some 1]). So the reachable settled state supplies a genuinely
+    FAIR stutter behaviour and the ESR formula is actually evaluated there: a
+    broken target ([current_state_matches = fun _ _ -> false]) flips this to
+    [Refuted] (pinned by [t_p11_vsts_esr]), so the clean/decisive verdict on the
+    real target is CORROBORATION, not a tautology. (Gating instead on the UNPRUNED
+    {!effectively_quiescent_vsts} — [Some 0], structurally unreachable — would make
+    every stutter unfair and the verdict goal-independent, the vacuity the
+    {!check_esr_vsts} companion carries; that is why the filter uses the pruned
+    {!settled}. DOCUMENTED DEVIATION from the §5 prose, which named the verbatim VRS
+    {!fair_lasso}: that helper decides quiescence over {!Scenario.cluster}, whose
+    registry excludes the VSTS CR, so it mis-deems VSTS states quiescent and
+    spuriously refutes — MEASURED.)
+
+    Its verdict AGREES with {!check_esr_settled_vsts} — both the clean/refuted CLASS
+    and the [decisive] flag (a [t_p11_vsts_esr] test asserts both, on the real target
+    and under the broken-target witness). The optional [?current_state_matches] is a
+    TEST-ONLY seam for that non-vacuity witness; production callers omit it. The §7.3
+    bound-artifact caveat applies as for {!check_esr_settled_vsts}: interpret a
+    [Refuted] only where [max_uid_seen]/[max_rv_seen] stayed strictly below their
+    ceilings. *)

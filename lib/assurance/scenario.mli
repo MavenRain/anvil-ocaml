@@ -71,6 +71,25 @@ val vsts_installed : Api_server.installed_types
     status, [{ "readyReplicas": null }]) and every other kind a [`Null] default.
     Used by the P10 VStatefulSet witness; the vrs-only {!cluster} is untouched. *)
 
+val vsts_cluster : Cluster.t
+(** The runnable VSTS cluster: [installed_types = ]{!vsts_installed} (admits the
+    VStatefulSet CR + Pod + PVC; [marshalled_default_status] already dispatches
+    exhaustively over {!Common.kind}), controller registry = the
+    {!V_stateful_set_pack} controller at {!controller_id}. Built EXACTLY as the
+    internal VRS {!cluster} but with the VSTS pack + installed types. The
+    [Cluster.t] the VSTS BMC/ESR legs explore, and the argument the VSTS legs pass
+    to {!productive_successors} / {!Cluster_check.settled}. *)
+
+val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
+(** Mirror of {!seed} for VSTS: the {!vsts} CR ([Scenario.vsts ~desired], default
+    [?vct:false]) created into etcd by a REAL {!Api_server.handle_create_request}
+    against a fresh empty api-server, so its uid/resource_version are STAMPED by the
+    create (never forged into metadata) and the api-server counters advance strictly
+    past them — the same reachable uid/rv/counter shape {!seed} carries. The VSTS
+    controller is scheduled at {!controller_id} ([Controller.init] reconcile state);
+    disruptors gated by [fair] ([false] = full nondeterminism for safety; [true] =
+    the fair suffix for ESR). *)
+
 val seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** A reachable initial cluster state: the {!Cluster.init} shape (empty controller
     reconcile state, fresh rpc allocator) but with {!vrs}[ ~desired] already stored
@@ -141,14 +160,20 @@ val seed_with_orphan : desired:int -> fair:bool -> Cluster.cluster_state
     as in {!seed}. *)
 
 val productive_successors :
-  Bound.t -> Cluster.cluster_state -> (Step.t * Cluster.cluster_state) list
-(** {!Cluster.enabled_successors}[ b ]{!cluster}[ s] keeping only the productive
-    step families — [Api_server_step (Some _)], [Builtin_controllers_step _],
-    [Controller_step _], [Schedule_controller_reconcile_step _], [Pod_monkey_step _],
-    [External_step _] — and dropping the no-op / failure / liveness-toggle steps
+  Cluster.t ->
+  Bound.t ->
+  Cluster.cluster_state ->
+  (Step.t * Cluster.cluster_state) list
+(** {!Cluster.enabled_successors}[ b t s] over the GIVEN installed cluster [t],
+    keeping only the productive step families — [Api_server_step (Some _)],
+    [Builtin_controllers_step _], [Controller_step _],
+    [Schedule_controller_reconcile_step _], [Pod_monkey_step _], [External_step _]
+    — and dropping the no-op / failure / liveness-toggle steps
     ([Api_server_step None], [Restart_controller_step], [Disable_crash_step],
     [Drop_req_step], [Disable_req_drop_step], [Disable_pod_monkey_step],
-    [Stutter_step]). The {!Step.t} match is exhaustive (no wildcard). *)
+    [Stutter_step]). The {!Step.t} match is exhaustive (no wildcard). The VRS legs
+    pass {!cluster} (behaviour identical to the former [Cluster.t]-free form); the
+    VSTS legs pass {!vsts_cluster}. *)
 
 val is_quiescent : Bound.t -> Cluster.cluster_state -> bool
 (** [productive_successors b s = []]: no api-server / controller / gc / schedule /

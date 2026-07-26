@@ -41,6 +41,16 @@ type invariant = {
           fires is checked vacuously and the bounds must be widened. *)
 }
 
+val cluster_structural : controller_id:int -> invariant list
+(** The shared cluster-level etcd/runtime-safety invariants inv1-6 (unique uids,
+    weakly-well-formed + uid/rv monotone, <= 1 controller owner, scheduled/triggering
+    CR uid < counter, unique reconcile ids). Independent of any CR — sourced from
+    Anvil's [kubernetes_cluster] proofs, not [vreplicaset_controller]. Exposed so
+    both {!always} and the VStatefulSet leg ([Vsts_invariants.always]) reuse ONE
+    source. [always ~cr ~controller_id] is observationally
+    [cluster_structural ~controller_id @ [inv9; inv15; inv16]] (unchanged result;
+    the shared inv1-6 bodies are the exact ones {!always} asserts). *)
+
 val always : cr:Vreplica_set.t -> controller_id:int -> invariant list
 (** The nine ALWAYS-invariants: #1 [etcd_objects_have_unique_uids],
     #2 [each_object_in_etcd_is_weakly_well_formed],

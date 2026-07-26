@@ -325,7 +325,7 @@ let drive_to_settled (goal : Invariants.invariant) (s0 : Cluster.cluster_state) 
       Option.bind
         (List.find_opt
            (fun (_step, s') -> s' <> s)
-           (Scenario.productive_successors Bound.default s))
+           (Scenario.productive_successors Scenario.cluster Bound.default s))
         (fun (_step, s') -> go (fuel - 1) s')
   in
   go 300 s0
@@ -367,7 +367,7 @@ let drive_liveness () : bool * bool * Cluster.cluster_state =
   let rec go fuel (s : Cluster.cluster_state) (seen : bool) :
       bool * bool * Cluster.cluster_state =
     let seen = seen || goal.Invariants.holds s in
-    match Scenario.productive_successors Bound.default s with
+    match Scenario.productive_successors Scenario.cluster Bound.default s with
     | [] -> (true, seen, s)
     | _ :: _ as succs ->
       if fuel <= 0 then (false, seen, s)
@@ -422,7 +422,7 @@ let seek_pending (s0 : Cluster.cluster_state) : Cluster.cluster_state option =
     else if fuel <= 0 then None
     else
       Option.fold
-        (List.nth_opt (Scenario.productive_successors Bound.default s) 0)
+        (List.nth_opt (Scenario.productive_successors Scenario.cluster Bound.default s) 0)
         ~none:None
         ~some:(fun (_step, s') -> go (fuel - 1) s')
   in

@@ -85,7 +85,7 @@ let neutered_settled (b : Bound.t) (s : Cluster.cluster_state) : bool =
     (fun (_step, s') -> Cc.state_equal s s')
     (List.filter
        (fun (_step, s') -> not (neutered_over_ceiling b s'))
-       (Scenario.productive_successors b s))
+       (Scenario.productive_successors Scenario.cluster b s))
 
 let test_m1_prune_neutered () =
   let neutered_reach =

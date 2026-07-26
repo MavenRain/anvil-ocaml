@@ -108,6 +108,138 @@ let current_state_matches (cr : Vreplica_set.t) (s : Cluster.cluster_state) : bo
                  vs.replicas
                  = Option.value ~default:1 (Vreplica_set.spec evrs).replicas)))
 
+(* GAP-2 (BUILD-SPEC-P11 §4): the shared cluster-level etcd/runtime-safety
+   invariants inv1-6, independent of any CR (sourced from Anvil's
+   [kubernetes_cluster] proofs, NOT [vreplicaset_controller]). Both {!always}
+   (via {!partition}) and [Vsts_invariants] reuse this ONE per-controller source.
+
+   Firewall-sanctioned FALLBACK (spec §4 / P11 Files note): rather than re-wiring
+   the large {!partition}, this carries its own copy of the (cr-free) generic
+   helpers + inv1-6 bodies — the exact bodies {!partition} builds — so {!always}'s
+   observable result is unchanged (partition is left untouched) while the shared
+   inv1-6 are exported once for the VSTS leg. *)
+let cluster_structural ~controller_id =
+  let resources s = Cluster.resources s in
+  let etcd_objs s = List.map snd (Object_ref_map.bindings (Cluster.resources s)) in
+  let scheduled s = Cluster.scheduled_reconciles s controller_id in
+  let ongoing s = Cluster.ongoing_reconciles s controller_id in
+  let uidc (s : Cluster.cluster_state) = s.api_server.uid_counter in
+  let rvc (s : Cluster.cluster_state) = s.api_server.resource_version_counter in
+  (* ---- #1 etcd_objects_have_unique_uids -------------------------------- *)
+  let inv1 =
+    {
+      name = "etcd_objects_have_unique_uids";
+      source = "kubernetes_cluster/proof/objects_in_store.rs:23";
+      holds =
+        (fun s ->
+          let uids =
+            List.filter_map
+              (fun obj ->
+                let md : Object_meta.t = Dynamic_object.metadata obj in
+                Option.map Common.Uid.to_int md.uid)
+              (etcd_objs s)
+          in
+          List.length (List.sort_uniq compare uids) = List.length uids);
+      interesting = (fun s -> Object_ref_map.cardinal (resources s) >= 2);
+    }
+  in
+  (* ---- #2 each_object_in_etcd_is_weakly_well_formed --------------------- *)
+  let inv2 =
+    {
+      name = "each_object_in_etcd_is_weakly_well_formed";
+      source = "kubernetes_cluster/proof/objects_in_store.rs:33";
+      holds =
+        (fun s ->
+          Object_ref_map.for_all
+            (fun key obj ->
+              let md : Object_meta.t = Dynamic_object.metadata obj in
+              Object_meta.well_formed_for_namespaced md
+              && Result.fold (Dynamic_object.object_ref obj)
+                   ~error:(fun _ -> false)
+                   ~ok:(fun r -> Common.equal_object_ref r key)
+              && Option.fold md.resource_version ~none:false ~some:(fun rv ->
+                     Common.Resource_version.to_int rv < rvc s)
+              && Option.fold md.uid ~none:false ~some:(fun u ->
+                     Common.Uid.to_int u < uidc s))
+            (resources s));
+      interesting = (fun s -> not (Object_ref_map.is_empty (resources s)));
+    }
+  in
+  (* ---- #3 each_object_in_etcd_has_at_most_one_controller_owner ---------- *)
+  let inv3 =
+    {
+      name = "each_object_in_etcd_has_at_most_one_controller_owner";
+      source = "kubernetes_cluster/proof/objects_in_store.rs:299";
+      holds =
+        (fun s ->
+          Object_ref_map.for_all
+            (fun _key obj ->
+              let md : Object_meta.t = Dynamic_object.metadata obj in
+              Option.fold md.owner_references ~none:true ~some:(fun orefs ->
+                  List.length (List.filter Owner_reference.is_controller orefs)
+                  <= 1))
+            (resources s));
+      interesting =
+        (fun s ->
+          List.exists
+            (fun obj ->
+              let md : Object_meta.t = Dynamic_object.metadata obj in
+              Option.fold md.owner_references ~none:false ~some:(fun orefs ->
+                  List.exists Owner_reference.is_controller orefs))
+            (etcd_objs s));
+    }
+  in
+  (* ---- #4 scheduled_cr_has_lower_uid_than_uid_counter ------------------- *)
+  let inv4 =
+    {
+      name = "scheduled_cr_has_lower_uid_than_uid_counter";
+      source = "kubernetes_cluster/proof/controller_runtime_safety.rs:15";
+      holds =
+        (fun s ->
+          Object_ref_map.for_all
+            (fun _key obj ->
+              let md : Object_meta.t = Dynamic_object.metadata obj in
+              Option.fold md.uid ~none:false ~some:(fun u ->
+                  Common.Uid.to_int u < uidc s))
+            (scheduled s));
+      interesting = (fun s -> not (Object_ref_map.is_empty (scheduled s)));
+    }
+  in
+  (* ---- #5 triggering_cr_has_lower_uid_than_uid_counter ------------------ *)
+  let inv5 =
+    {
+      name = "triggering_cr_has_lower_uid_than_uid_counter";
+      source = "kubernetes_cluster/proof/controller_runtime_safety.rs:47";
+      holds =
+        (fun s ->
+          Object_ref_map.for_all
+            (fun _key (orc : Controller.ongoing_reconcile) ->
+              let md : Object_meta.t = Dynamic_object.metadata orc.triggering_cr in
+              Option.fold md.uid ~none:false ~some:(fun u ->
+                  Common.Uid.to_int u < uidc s))
+            (ongoing s));
+      interesting = (fun s -> not (Object_ref_map.is_empty (ongoing s)));
+    }
+  in
+  (* ---- #6 every_ongoing_reconcile_has_unique_id ------------------------ *)
+  let inv6 =
+    {
+      name = "every_ongoing_reconcile_has_unique_id";
+      source = "kubernetes_cluster/proof/controller_runtime_safety.rs:874";
+      holds =
+        (fun s ->
+          let ids =
+            List.map
+              (fun (_k, (orc : Controller.ongoing_reconcile)) -> orc.reconcile_id)
+              (Object_ref_map.bindings (ongoing s))
+          in
+          List.length (List.sort_uniq compare ids) = List.length ids);
+      (* NB: only non-vacuous with >= 2 concurrent reconciles. *)
+      interesting = (fun s -> Object_ref_map.cardinal (ongoing s) >= 2);
+    }
+  in
+  [ inv1; inv2; inv3; inv4; inv5; inv6 ]
+
 (* Builds every record once and returns the authoritative partition as
    [(always, eventually_always)]; the three exposed lists below derive from it so
    they never drift. *)

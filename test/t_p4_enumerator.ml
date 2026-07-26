@@ -108,7 +108,7 @@ let rec drive (fuel : int) (s : Cluster.cluster_state) : unit =
   if fuel <= 0 || all_sat () then ()
   else
     Option.fold
-      (List.nth_opt (Scenario.productive_successors b s) 0)
+      (List.nth_opt (Scenario.productive_successors Scenario.cluster b s) 0)
       ~none:()
       ~some:(fun ((_step : Step.t), (s' : Cluster.cluster_state)) ->
         drive (fuel - 1) s')
