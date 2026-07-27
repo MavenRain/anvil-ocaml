@@ -331,6 +331,59 @@ let check_invariants_under_faults ?(depth = default_depth) (bound : Bound.t)
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
 
+(* G4 (BUILD-SPEC-P14 section 4.3). The id-level correspondence family
+   ({!Correspondence.family} = the five [proof/network.rs] StatePreds) refuted by
+   reachability over the fault product. Structurally G1 with a different
+   invariant list: the family is lifted pointwise ([fun f -> inv f.cs]) exactly
+   as there, so a refutation is a refutation of the PORTED invariant at a
+   genuinely post-crash state, never an artifact of the product construction.
+
+   The crash DIMENSION is selected by the caller's [budget], NOT by the seed:
+   both legs seed [~crash:true] (the flag ON, so [Step.Restart_controller_step]
+   is enumerated at all) and differ only in [budget.max_crashes]. Same seed, same
+   state shape, ONE variable - which is what makes the crash-0 and crash-1 runs
+   directly comparable rather than two unrelated experiments.
+
+   [require_crash] selects what the gate COUNTS, and it exists because the two
+   legs need different non-vacuity witnesses (BUILD-SPEC-P14 section 4.3 sketched
+   a single fixed gate; that is the one place the spec does not survive contact,
+   because at [max_crashes = 0] a [crashes >= 1] gate is 0 BY CONSTRUCTION and so
+   cannot serve as section 4.4's crash-disabled non-vacuity floor):
+
+   - [false] (the G1 leg): count states where SOME member's [interesting] fires.
+     This is the floor proving the family is exercised at all BEFORE any crash,
+     so a later clean crash verdict cannot be clean-by-emptiness. MEASURED
+     CORRECTION: that floor covers N1-N4 only. N5's [interesting] fires in ZERO
+     G1 states (fault-free traffic is request/response lock-step, so its
+     [cardinal >= 2] premise is unreachable), and on G2 its 84 firing states are
+     ALL post-crash. See {!check_correspondence_under_faults} in the .mli.
+   - [true] (the G2 leg): additionally require [f.crashes >= 1], i.e. count the
+     states that are genuinely POST-CRASH and exercise a member. This is the
+     phase's headline witness. *)
+let check_correspondence_under_faults ?(depth = default_depth) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_crash : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
+      ~pod_monkey:false
+  in
+  let invs = Correspondence.family cluster ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_crash) || f.crashes >= 1)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
 (* G2. P12's uniqueness gate, strengthened into the crash dimension: the SAME
    {!Invariants.unique_reconcile_id_invariant}, the SAME
    [cardinal(ongoing) >= 2] non-vacuity notion (inv6's own [interesting]), but

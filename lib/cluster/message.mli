@@ -108,6 +108,13 @@ module Rpc_id_allocator : sig
       the allocator IS its monotone counter, so [Int.equal] on the counter is a
       faithful state equality. Additive, consumed by the P5 cluster-state equality
       (BUILD-SPEC-P5 §1); no behaviour change. *)
+
+  val rpc_id_count : t -> int
+  (** The number of rpc ids allocated so far (the monotone [rpc_id_counter]).
+      Read-only accessor for the P14 id-level correspondence family, whose N1/N2
+      members compare an in-flight or pending {!Rpc_id.t} against this counter
+      (Anvil [kubernetes_cluster/proof/network.rs:35-41] and [:76-83],
+      BUILD-SPEC-P14 §4.1); no behaviour change. *)
 end
 
 type message_ops = { recv : t option; send : Pool.t }

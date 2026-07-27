@@ -15,7 +15,13 @@
     ({!Cluster_check.check_always} / [check_always_vsts]) are NON-decisive
     because the faults-ON graph does not close. P12's headline witness is
     therefore a FAULT-FREE witness. This module supplies the missing dimension.
-    It is pure ASSURANCE CONSTRUCTION: [lib/cluster/] is not modified, and no
+    It is pure ASSURANCE CONSTRUCTION: [lib/cluster/] is not modified BY P13
+    (P14, which adds {!check_correspondence_under_faults} to this same module,
+    DOES modify it by one purely additive accessor -
+    [Message.Rpc_id_allocator.rpc_id_count]; see that leg's doc and
+    {!Correspondence}. The unqualified claim was left standing when P14 landed
+    here and is corrected rather than deleted, since it remains true of P13's own
+    contribution), and no
     invariant is weakened.
 
     {b Why the budget is NOT a {!Bound.t} field (BUILD-SPEC-P13 section 2).}
@@ -242,6 +248,28 @@ type fault_report = {
     impossible to state as a pass. Plain readable fields, following the
     {!Cluster_check.report} precedent. *)
 
+val violated_of :
+  Invariants.invariant list ->
+  faulted Model_check.outcome ->
+  Invariants.invariant option
+(** The shared [~violated] wiring every safety leg here passes to its runner: on
+    [Model_check.No_counterexample] the answer is [None]; on
+    [Model_check.Refuted] it is {!Invariants.first_violated} of the given list at
+    the HEAD OF THE LASSO LOOP, i.e. the member actually broken at the
+    counterexample state, with its Anvil [source] attached. This is what fills
+    {!fault_report.violated}, so the field NAMES the broken member rather than
+    merely reporting that something broke.
+
+    {b Exported for test reasons, deliberately.} On the true model every shipped
+    leg is clean, so this function's [Refuted] branch would otherwise ship with
+    ZERO automated coverage - exactly the "Refuted path never observed" failure
+    P12 shipped ([[feedback-confirm-tests-by-mutation]]). Exporting it lets a
+    test drive a REAL [Refuted] outcome (over a hand-forged product state, or
+    over the real graph with a deliberately-violating invariant list) through THE
+    SAME function the legs use, instead of re-implementing the naming path in the
+    test and asserting about the copy. Purely additive: no leg's behaviour
+    changes. *)
+
 val check_invariants_under_faults :
   ?depth:int -> Bound.t -> budget -> desired:int -> fault_report
 (** {b G1} (BUILD-SPEC-P13 section 4.4): the FULL shipped VStatefulSet safety
@@ -305,6 +333,127 @@ val check_invariants_under_faults :
     transition itself. The M2 companion is on
     {!check_unique_reconcile_id_under_faults}, and the full protocol (mutants
     applied, measured, reverted) is the header of [test/t_p13_mutation.ml]. *)
+
+val check_correspondence_under_faults :
+  ?depth:int ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_crash:bool ->
+  fault_report
+(** BUILD-SPEC-P14 section 4.3: the ID-LEVEL correspondence family
+    ({!Correspondence.family}, the five [proof/network.rs] StatePreds) checked by
+    reachability over the fault product.
+
+    {b What this leg is for.} P13 measured that mutating the crash transition
+    refutes NOTHING of the shipped suite, because no member of it READS A MESSAGE
+    (BUILD-SPEC-P13 section 6, restated on {!Correspondence}). This is the leg
+    that closes that gap: [restart_controller] (cluster.ml:291-324) empties
+    [ongoing_reconciles] while leaving [s.network] and [s.rpc_id_allocator]
+    untouched, so the crash edge is precisely the one that can break rpc-id
+    discipline, and these five predicates are the ones that would see it.
+
+    {b The seed is constant; the budget is the variable.} Both legs seed
+    [~crash:true] (so [Step.Restart_controller_step] is enumerated at all) and
+    differ ONLY in [budget.max_crashes]. Same seed, same state shape, one
+    variable - the crash-0 and crash-1 runs are therefore directly comparable
+    rather than two unrelated experiments. Passing [~crash:false] instead would
+    change the seed STATE (the flag is part of state equality) and confound the
+    comparison.
+
+    {b [require_crash] selects what [gate_states] counts.} The two legs need
+    different non-vacuity witnesses:
+
+    - [~require_crash:false] (the G1 leg, run at [max_crashes = 0]): states where
+      some member's [interesting] fires. The floor showing the family is
+      exercised at all BEFORE any crash, so a later clean crash verdict cannot be
+      clean-by-emptiness — but see the MEASURED CORRECTION below: that floor
+      covers N1-N4 only.
+    - [~require_crash:true] (the G2 leg, run at {!budget_crash_only}):
+      additionally requires [f.crashes >= 1] - the states that are genuinely
+      POST-CRASH and exercise a member. This is the phase's headline witness, and
+      it is the count that must be [> 0] for the leg to mean anything.
+
+    {b Disclosed deviation from BUILD-SPEC-P14 section 4.3,} which sketched a
+    single fixed [crashes >= 1] gate: at [max_crashes = 0] that gate is [0] BY
+    CONSTRUCTION, so it cannot serve as section 4.4's crash-disabled non-vacuity
+    floor. The selector is the minimal repair and is explicit rather than
+    implicit in the budget.
+
+    {b Reading a verdict.} [No_counterexample {decisive = true}] means
+    falsification up to ([depth], {!Bound.t}, {!budget}) - evidence that the crash
+    transition preserves ID discipline, NOT that it is faithful in every other
+    respect. A [Refuted] names the offending member through [violated], because
+    [violated_of] is applied to the family rather than to a singleton.
+
+    {b MEASURED} (all at [desired = 1], [P13_witness.p13_bound], [depth = 40];
+    pinned once in [test/p14_witness.ml]):
+
+    - G1 ([zero_budget], [~require_crash:false]): [No_counterexample],
+      [decisive = true], 76 states, [gate_states = Some 32],
+      [crash_witness_states = 0], [fault_free_states = 76],
+      [max_uid_seen = 3], [max_rv_seen = 2], [max_crashes_seen = 0]. 0.01 s CPU.
+    - G2 ({!budget_crash_only}, [~require_crash:true]): [No_counterexample],
+      [decisive = true], 464 states, [gate_states = Some 296],
+      [crash_witness_states = 388], [fault_free_states = 76],
+      [max_crashes_seen = 1]. 0.06 s CPU. The 464 / 388 / 76 triple is the SAME
+      product graph P13's G1 explores (same seed, bound and budget), so the two
+      phases' counts are cross-checkable; only the asserted invariant differs.
+    - Section 5 predicted [max_in_flight] would bind harder here than in any
+      prior phase, because post-crash orphan messages never drain. It did NOT:
+      no retune was needed and both legs close in under 0.1 s CPU. Recorded as a
+      measured NON-retune so the prediction is not left standing.
+
+    {b MEASURED CORRECTION - N5 is VACUOUS on the crash-free graph.} Per-member
+    [interesting] counts, G1 then G2-all then G2-post-crash: N1 32 / 328 / 296,
+    N2 32 / 180 / 148, N3 16 / 100 / 84, N4 16 / 156 / 140,
+    {b N5 0 / 84 / 84}. Fault-free traffic in this scenario is strict
+    request/response lock-step, so at most one message is ever in flight and
+    N5's [cardinal >= 2] premise is unreachable; this is NOT a ceiling artifact
+    ([max_in_flight = 8], four times what N5 needs; the tests assert a [>= 4]
+    FLOOR on that ceiling, not the literal 8 - corrected in review, the prose
+    previously claimed they pinned the 8).
+
+    {b MEASURED anti-artifact evidence for that zero (review finding).} Arguing
+    the zero against [max_in_flight = 8] alone was too weak: the ceiling this run
+    actually PRUNES by is [reconcile_ceiling = 2] (it is what makes
+    [pruned_by_ceiling] true), and the earlier robustness run varied only
+    [uid_ceiling] / [rv_ceiling], which the same run reports were never reached -
+    so its invariance was guaranteed a priori. The BINDING ceiling has now been
+    swept on the G1 leg, and N5's count stays 0 at every setting:
+    [reconcile_ceiling] 2 -> 76 states / gate 32, 3 -> 112 / 48,
+    4 -> 148 / 64 (at [depth = 60]), 6 -> 220 / 96 (at [depth = 100]) - all four
+    decisive, all four with N5's [interesting] count 0. The mechanism is stronger
+    than the count: the LARGEST [Message.Pool.cardinal (Cluster.in_flight s)]
+    over the whole crash-free graph is {b 1} at every one of those ceilings, so
+    the [>= 2] premise is not merely unreached, it is structurally unreachable
+    fault-free. N5's vacuity is a property of the lock-step message discipline,
+    not of the bound. (At [reconcile_ceiling = 4] with the shipped [depth = 40]
+    the run is NOT decisive and [pruned_by_ceiling] flips to false - depth
+    becomes the binding limit before the ceiling does - which is why the
+    higher-ceiling legs are run at a raised depth.)
+    N5's G2 count EQUALS its post-crash count (84 = 84), i.e. every state
+    exercising N5 is post-crash: {b the crash edge is the only source of two
+    concurrently in-flight messages in this bounded graph}. CAREFUL: that is NOT
+    the mechanism by which the allocator-reset mutant bites - it bites via N1,
+    with no collision forming at all (see the crash-sensitivity paragraph). N5's
+    84 = 84 identity is a statement about where two-in-flight states come from,
+    not about what catches MA. So G1 is the non-vacuity floor for the
+    id-ORDERING members only; N5 is checked vacuously whenever no crash is
+    budgeted, and its floor is G2's 84.
+
+    {b The crash-sensitivity result (BUILD-SPEC-P14 section 6, confirmed by
+    mutation, not asserted).} Mutating [restart_controller] (cluster.ml:291-324)
+    to ALSO reset [s.rpc_id_allocator] flips G2 from clean to [Refuted] at
+    [steps = 6], [violated = every_in_flight_msg_has_lower_id_than_allocator],
+    while G1 stays byte-identical at 76 states / gate 32 - the control proving
+    the refutation is attributable to the crash edge. N1 is what fires, NOT the
+    N5 the spec predicted: once the counter resets to 0 a surviving pre-crash
+    message trips [rpc_id < counter] immediately, one step before a collision
+    can form. The converse mutant (restart KEEPS [ongoing_reconciles]) refutes
+    NOTHING - both legs stay clean, G2 merely shrinks to 152 states /
+    [crash_witness_states = 76]. Together these close P13's negative result: the
+    allocator-reset mutation that refuted nothing there is refuted here. *)
 
 val check_unique_reconcile_id_under_faults :
   ?depth:int -> Bound.t -> budget -> desireds:int list -> fault_report
