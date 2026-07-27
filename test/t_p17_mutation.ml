@@ -174,7 +174,10 @@
    [Mc.check_safety] on a singleton product state (Refuted SEEN), each
    control through the same harness (clean SEEN), and each forge fires its
    target's own [interesting] (a premise-fired violation, never a vacuous
-   one). Boundary discipline (the P14/P16 entailment lesson): the S2
+   one) - literally true SINCE the P18-branch D1 fix (BUILD-SPEC-P18
+   section 6): as committed, the S2 uid-boundary witness had only the
+   first two checks and the S2 rebuilt-seed control skipped the harness
+   (the P17 disclosed residual). Boundary discipline (the P14/P16 entailment lesson): the S2
    witnesses sit AT the counters ([rv = rvc], [uid = uidc]) so a [<] ->
    [<=] weakening is discriminated; a below-counter witness would be
    accepted by both and discriminate nothing.
@@ -462,9 +465,13 @@ let test_s1_forge () =
 let test_s2_forge () =
   with_cr (fun cr ->
       (* CONTROL first: the REBUILT seed (identity forge) is accepted -
-         the builder introduces nothing. *)
+         the builder introduces nothing - and runs through the leg's own
+         harness clean (D1 parity, BUILD-SPEC-P18 section 6: the banner's
+         "each control through the same harness" is now literally true). *)
       Alcotest.(check (list string)) "S2 control: rebuilt seed accepted" []
         (violated_names (forged [ (Scenario.vsts_ref, cr) ]));
+      Alcotest.(check bool) "S2 control: the leg harness stays clean" true
+        (not (refuted (safety_of (product (forged [ (Scenario.vsts_ref, cr) ])))));
       (* rv boundary: [rv = rvc] exactly - MR''s state class. *)
       let rv_at_counter =
         with_md
@@ -501,7 +508,20 @@ let test_s2_forge () =
         (uid_int uid_at_counter);
       Alcotest.(check (list string))
         "S2 forge: uid = uidc violates EXACTLY S2 (strict <)" [ s2_name ]
-        (violated_names (forged [ (Scenario.vsts_ref, uid_at_counter) ])))
+        (violated_names (forged [ (Scenario.vsts_ref, uid_at_counter) ]));
+      (* D1 (BUILD-SPEC-P18 section 6, P17 disclosed residual): the
+         uid-boundary witness gets the SAME last-two checks as the
+         rv-boundary witness above - interesting fired (premise-fired, not
+         vacuous) and Refuted SEEN through the leg's own harness. *)
+      Alcotest.(check bool)
+        "S2 forge (uid): S2's own interesting fires (non-empty)" true
+        (interesting_fires s2_name
+           (forged [ (Scenario.vsts_ref, uid_at_counter) ]));
+      Alcotest.(check bool)
+        "S2 forge (uid): the leg's own check_safety REFUTES the product state"
+        true
+        (refuted
+           (safety_of (product (forged [ (Scenario.vsts_ref, uid_at_counter) ])))))
 
 (* ==== S3: two controller owners (MO-b's stored shape, forge level) ======== *)
 

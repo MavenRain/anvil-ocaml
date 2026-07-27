@@ -1091,6 +1091,103 @@ val check_objects_in_store_under_faults :
     measured, not asserted. See [objects_in_store.mli] for the upstream
     citations and the B2 audit verdicts. *)
 
+val check_helper_invariants_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  ?vct:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_fault:bool ->
+  fault_report
+(** {b P18} (BUILD-SPEC-P18 section 4): the pod/PVC metadata family
+    ({!Helper_invariants.helper_family} = H1
+    [all_pods_in_etcd_matching_vsts_have_no_finalizer_or_deletion_timestamp_and_one_owner_ref],
+    H2
+    [all_pvcs_in_etcd_matching_vsts_have_no_finalizer_or_deletion_timestamp_or_owner_ref]
+    - the two portable always-members of
+    [vstatefulset_controller/proof/helper_invariants.rs]; port renderings,
+    disclosed deviations and the E1-E7 exclusion ledger live in
+    [helper_invariants.mli]) checked by reachability over the fault
+    product, asserted ALONE with per-member [interesting] counts - the
+    P14-P16 DISJOINT-family pattern (no shipped suite contains either
+    member; [t_p18_regression] pins the (name, source) disjointness).
+
+    {b Shape: G7's clone with [?vct] back.} Same seed family
+    ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey
+    ~vct ()], the crash flag ON with the crash DIMENSION selected by the
+    caller's budget), same [default_depth], same {!faulted_successors}
+    product, same {!violated_of} naming, same
+    [require_fault]/{!budget_fault_taken} gate. The ONE deviation from
+    {!check_objects_in_store_under_faults} is [?vct] (default [false]):
+    G7's omission was a disclosed k6-class scope cut, undone here because
+    H2's premise needs a stored PVC and no [vct:false] graph ever mints
+    one - the [vct:true] zero-budget leg (L0v) is H2's non-vacuity floor.
+    The family CR is the SEEDED CR itself ([Scenario.vsts ~desired ~vct
+    ()], exactly the object the seed marshals into the store), so the
+    premises quantify over the scenario's own CR, never a forged twin.
+
+    {b The five-leg matrix} (bound = P13's shape, [depth = 40],
+    [desired = 1]; budget literals via the witness chain,
+    [test/p18_witness.ml] deriving from p17/p16):
+    L0 ([zero_budget], [vct:false], [~require_fault:false]) /
+    Lc ({!budget_crash_only}, [vct:false], [~require_fault:true]) /
+    Ld (drop-only [{0; 1; 0}], [~req_drop:true], [~require_fault:true]) /
+    Lm (monkey-only [{0; 0; 1}], [~pod_monkey:true],
+    [~require_fault:true]) / L0v ([zero_budget], {b [vct:true]},
+    [~require_fault:false]). Graph identity: the product graph depends
+    only on (seed, bound, budget, depth), never on the invariant list, so
+    the four [vct:false] graphs must be EXACTLY P13-P17's 76 / 464 / 744 /
+    1976 states and the L0v graph is P16's L0v (116 states,
+    [test/p16_witness.ml] - same seed, bound, budget, depth). Any drift
+    means the seed or bound moved: STOP and diagnose, never retune.
+
+    {b The union gate is load-bearing again} (the G7 saturation
+    disclosure's "future family whose union does not saturate", realised):
+    [gate_states] counts states where SOME member's [interesting] fires
+    (AND {!budget_fault_taken} at [require_fault:true]). H1's
+    [interesting] (a stored Pod key in the CR's namespace with a
+    [pod_name]-shaped name) is 0 at the seed - the store holds only the
+    CR - and H2's (a stored [pvc_name]-shaped PVC key) is 0 on EVERY
+    [vct:false] state, so the gate fires on a proper subset of every
+    graph and its union conjunct carries red-capability, unlike G7's.
+    Per-member counts are measured test-side over a LOCAL REPLICA
+    ([t_p17_store]'s discipline: replica faithfulness asserted FIRST -
+    the replica's state count = the leg's [states] - then fires-by-name
+    over the all / post-crash / post-drop / post-monkey slices, then the
+    union gate recomputed locally and asserted equal to [gate_states]).
+
+    {b Honest-vacuity discipline (H2, P14 N5)}: on the four [vct:false]
+    legs H2's per-member count 0 IS the result, asserted per leg; H2's
+    strictly positive floor lives on L0v alone.
+
+    {b MEASURED (B3, 2026-07-27; every spec section 4 prediction CONFIRMED
+    BY NUMBER - BUILD-SPEC-P18 section 5 carries the full table; pins in
+    [test/p18_witness.ml], asserted by [t_p18_helper]).} All five legs
+    clean + DECISIVE with faithful local replicas. (1) Graphs exact:
+    L0 76 / Lc 464 / Ld 744 / Lm 1976 (P13-P17 identity, no drift), L0v
+    116 (= P16's). (2) H1 [interesting] = 52 / 296 / 376 / 1624 - the P17
+    S1/S3 slice TO THE STATE, post-fault slices 244 (crash) / 272 (drop) /
+    1520 (monkey); asserted per leg as scenario facts, never a law.
+    (3) H2 = 0 on every [vct:false] state (honest vacuity, pinned per
+    leg) with the strictly positive L0v floor: 80 of 116 states. (4) {b
+    The phase headline}: Lm clean + decisive across 1520 post-monkey
+    H1-premise states - the rely-UNCONSTRAINED but candidate-RESTRICTED
+    monkey cannot violate H1 on this graph (the shipped monkey only; a
+    fabricating monkey remains future surface, spec section 8.6).
+    (5) Lm [max_uid_seen = 4] (= P16's Lm constant, [max_rv_seen = 4])
+    via monkey-DELETE + reconciler re-create, never "create on a live
+    key lands" (BUILD-SPEC-P17.md:226's literal reading is false - such
+    a create is rejected [Object_already_exists]). Gates: 52 / 244 /
+    272 / 1520 / 80 - equal to the fault-slice H1 count on every
+    [vct:false] leg, and on L0v equal to H2's own count (the 68
+    H1-firing states are a measured strict subset of the 80 H2-firing
+    ones: the reconciler creates the ordinal's PVC before its pod).
+    Exclusion pins measured: E1 uid-exact-vs-H1 delta 0 on L0; E4
+    owner-ref-carrying stored PVCs 0 with control 80 on L0v. Wall times
+    0.08 / 0.18 / 0.48 / 2.26 / 0.05 s. *)
+
 val check_unique_reconcile_id_under_faults :
   ?depth:int -> Bound.t -> budget -> desireds:int list -> fault_report
 (** {b G2} (BUILD-SPEC-P13 section 4.4): P12's concurrent-reconcile uniqueness

@@ -142,26 +142,17 @@ let upstream_names : string list =
 let names_of (invs : Invariants.invariant list) : string list =
   List.map (fun (i : Invariants.invariant) -> i.Invariants.name) invs
 
-let pairs_of (invs : Invariants.invariant list) : (string * string) list =
-  List.map
-    (fun (i : Invariants.invariant) -> (i.Invariants.name, i.Invariants.source))
-    invs
-
 (* Either-component leak detector, the k3-strengthened identity (P17
-   section 7 precedent): a hit on EITHER the name or the source is
-   reported. Used here for the INVERSE direction of the P14-P16 guards. *)
-let pair_leaks (label : string) (family_pairs : (string * string) list)
-    (suite_pairs : (string * string) list) : string list =
-  List.concat_map
-    (fun ((n, src) : string * string) ->
-      List.filter_map
-        (fun ((n', src') : string * string) ->
-          if String.equal n n' then Some (label ^ " contains name " ^ n)
-          else if String.equal src src' then
-            Some (label ^ " contains source " ^ src ^ " (as " ^ n' ^ ")")
-          else None)
-        suite_pairs)
-    family_pairs
+   section 7 precedent), via the shared {!Pair_guard} (BUILD-SPEC-P18
+   section 6 D2: the four byte-identical local copies extracted;
+   assertions below byte-unchanged). Used here for the INVERSE direction
+   of the P14-P16 guards. *)
+let pairs_of : Invariants.invariant list -> (string * string) list =
+  Pair_guard.pairs_of
+
+let pair_leaks :
+    string -> (string * string) list -> (string * string) list -> string list =
+  Pair_guard.pair_leaks
 
 let test_family_names_are_the_upstream_three () =
   Alcotest.(check (list string))

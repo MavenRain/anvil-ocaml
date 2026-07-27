@@ -635,6 +635,61 @@ let check_objects_in_store_under_faults ?(depth = default_depth)
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
 
+(* ---- P18 (BUILD-SPEC-P18 section 4): the helper_invariants family ---- *)
+
+(* P18. The pod/PVC metadata family ({!Helper_invariants.helper_family} =
+   H1/H2, the two portable always-members of
+   vstatefulset_controller/proof/helper_invariants.rs) asserted ALONE by
+   reachability over the fault product. A clone of the G7 shape directly
+   above (same [~crash:true] seed with the crash DIMENSION selected by the
+   caller's budget, same pointwise lift [fun f -> inv f.cs], same
+   {!violated_of}, same [default_depth], same
+   [require_fault]/{!budget_fault_taken} gate) with ONE disclosed deviation:
+   [?vct] (default [false]) RETURNS - G7's omission was a deliberate
+   k6-class scope cut, but H2's premise needs a stored PVC and no
+   [vct:false] graph ever mints one, so the [vct:true] zero-budget leg is
+   H2's non-vacuity floor (the arg pattern of
+   {!check_req_resp_under_faults}). The family CR is the SEEDED CR itself
+   ([Scenario.vsts ~desired ~vct ()] - exactly the object
+   [Scenario.vsts_seed_faults] marshals into the store, scenario.ml:355-361),
+   so the premises quantify over the scenario's own CR, never a forged twin.
+   Graph identity: at [vct:false] and P13's bound / depth / budgets the
+   product graphs are the SAME 76 / 464 / 744 / 1976 ones P13-P17 pinned,
+   and the [vct:true] zero-budget graph is P16's L0v (116 states) - the
+   graph depends only on (seed, bound, budget, depth), never on the
+   invariant list. Unlike G7 the union gate does NOT saturate (H1's
+   [interesting] is 0 at the seed - the store holds only the CR - and H2's
+   is 0 on every [vct:false] state), so the gate's union conjunct is
+   load-bearing again (the G7 .mli's "future family" note, realised). *)
+let check_helper_invariants_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) ?(vct = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ~vct
+      ()
+  in
+  let invs =
+    Helper_invariants.helper_family
+      ~cr:(Scenario.vsts ~desired ~vct ())
+      ~controller_id
+  in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
 (* G2. P12's uniqueness gate, strengthened into the crash dimension: the SAME
    {!Invariants.unique_reconcile_id_invariant}, the SAME
    [cardinal(ongoing) >= 2] non-vacuity notion (inv6's own [interesting]), but
