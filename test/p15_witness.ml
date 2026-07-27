@@ -56,7 +56,10 @@ let l4_budget : Fc.budget = Fc.budget_default
 
 (* [check_reconcile_correspondence_under_faults ~depth (p15_bound
    ~desireds:[witness_desired]) zero_budget ~desired:witness_desired
-   ~require_crash:false]. MEASURED: [No_counterexample], decisive, both pruning
+   ~require_fault:false] ([require_fault] renamed from [require_crash] under
+   P17 F6, the crash conjunct generalised to [budget_fault_taken] -
+   extensionally identical on every shipped run, so every pin below is
+   UNCHANGED). MEASURED: [No_counterexample], decisive, both pruning
    flags true, 0.013 s CPU + 0.006 s replica. The family is clean with all
    three upstream premises held - the control every other leg is read against. *)
 
@@ -105,7 +108,7 @@ let r4_interesting_l0 : int = 32
 
 (* ==== L1: crash-only {1;0;0} - tests crash_disabled (crs.rs:414) =========== *)
 
-(* [~require_crash:true]. MEASURED: [No_counterexample], decisive, both pruning
+(* [~require_fault:true]. MEASURED: [No_counterexample], decisive, both pruning
    flags true, crash edge REALLY taken, 0.077 s CPU + 0.053 s replica.
    PREDICTION P15-A CONFIRMED as a measured NEGATIVE result: the unmutated
    crash edge refutes NOTHING in this reconcile-guarded family; its only
@@ -134,13 +137,13 @@ let l1_max_crashes_seen : int = P13_witness.g1_max_crashes_seen
 let l1_settled_with_faults_live : int = P13_witness.g1_settled_with_faults_live
 
 (* MEASURED 304: post-crash states at which SOME member of R1-R4 is exercised
-   ([require_crash = true]). Strictly larger than P14's 296 on the same graph:
+   ([require_fault = true]). Strictly larger than P14's 296 on the same graph:
    the reconcile-side premises survive at post-crash states whose network is
    EMPTY (92 of them), where P14's message-shaped premises go dark. *)
 let l1_gate_states : int = 304
 
 (* MEASURED 368: the same union WITHOUT the post-crash requirement, recomputed
-   over the leg's replica (the leg reports only its own [require_crash] gate). *)
+   over the leg's replica (the leg reports only its own [require_fault] gate). *)
 let l1_gate_states_all : int = 368
 
 (* The §5 re-measurement, crash side: the crash orphans exactly one pre-crash

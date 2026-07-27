@@ -162,8 +162,11 @@ let knife_edge_lc : int = 4
 
 (* [~req_drop:true ~require_fault:true], once per list. MEASURED: both lists
    [No_counterexample], decisive, and [max_drops_seen = 1] - THE FIRST DROP
-   EDGE EVER TAKEN IN A DECISIVE LEG in this repo (BUILD-SPEC-P16 §1: P13
-   built the machinery, no shipped seed ever switched it on). A CLEAN drop
+   EDGE EVER TAKEN IN A DECISIVE LEG in this repo (BUILD-SPEC-P16 §1,
+   F2-corrected: P13 built the machinery, and [check_settles_after_disable]
+   has seeded all three fault flags since P13, but its one shipped run used
+   [budget_crash_only] - p13_witness.ml:53 - so no shipped leg RUN ever
+   took the edge). A CLEAN drop
    leg is a NEGATIVE result (§8.4) and these pins record exactly that.
    DERIVED by the graph identity with P15's SUPPLEMENTARY flag-enabled L2x
    probe (same seed flags, bound, budget {0;1;0} and depth - what was a

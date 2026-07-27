@@ -30,12 +30,25 @@ says.**
 **The gap is that the thesis was only ever tested on ONE of the three fault
 dimensions.** P15 measured, and disclosed in `fault_check.mli`, that the
 `req_drop` and `pod_monkey` premises were *vacuous at the leg*: every shipped
-fault leg seeds
+INVARIANT/CORRESPONDENCE fault leg seeds
 `Scenario.vsts_seed_faults ~crash:true ~req_drop:false ~pod_monkey:false`
-(`fault_check.ml:315`, `:368`, `:472`, `:507`) and the three fault flags only
+(at `2c07fd1`: `fault_check.ml:315`, `:368`, `:472`, `:507`) and the three
+fault flags only
 ever flip `true -> false` (`Disable_*`, `cluster.ml:337`, `:385`, `:445`), so
-**budget variation alone can never take a drop or a monkey edge.** P15 had to
+**budget variation alone can never take a drop or a monkey edge at those
+legs.** P15 had to
 fall back on supplementary flag-enabled probes run outside the legs.
+
+> **MEASURED-CORRECTION (P17 F2, 2026-07-27).** As originally written, the
+> paragraph above claimed *every shipped fault leg* seeds the flags false, and
+> §4.4 below sold P16's legs as "the first that CAN take" a drop/monkey edge.
+> FALSE: `check_settles_after_disable` has seeded all three flags TRUE with a
+> caller-supplied budget since P13 (pre-P16 `fault_check.ml:555`; on the P17
+> branch `:642-650`; `t_p13_faults.ml:171`/`:194` pin the all-on seed). The
+> verified TRUE claim: no shipped leg RUN ever TOOK a drop or monkey edge -
+> that leg's one shipped run used `budget_crash_only` (`p13_witness.ml:53`) -
+> and P16's Ld/Lm are the first legs to take those edges under a MEASURED
+> fault gate.
 
 So as of `2c07fd1`:
 
@@ -43,9 +56,28 @@ So as of `2c07fd1`:
 - No mutation matrix in P13, P14 or P15 has ever mutated `drop_req` or
   `pod_monkey_next`. Every mutant so far (M1, M2, MA) targets
   `restart_controller`.
-- No shipped invariant, in any suite, reads a response message's BODY or relates
-  a message to `s.api_server` at all. (P14's N-family reads `rpc_id`s; P15's
-  R-family reads `pending_req_msg` identity. Neither opens a response.)
+- No shipped invariant, in any suite, reads a response message's BODY and
+  relates it to `s.api_server` *while quantifying over all in-flight
+  messages*. (P14's N-family reads `rpc_id`s; P15's R-family reads
+  `pending_req_msg` identity - neither opens a response. inv15/inv16 in
+  `Invariants.always` DO open list-response bodies and relate them to
+  `resources s` / the rv counter, but only for the single pending list
+  request of one decoded ongoing VRS reconcile.)
+
+> **MEASURED-CORRECTION (P17 F1, 2026-07-27).** The bullet above originally
+> read "No shipped invariant, in any suite, reads a response message's BODY or
+> relates a message to `s.api_server` at all". FALSE: shipped inv15
+> `filtered_pods_invariant_matrix` (`invariants.ml:900-965`, body-opener
+> resp15 at `:872-898`, wired at `:956`, in `always` via `:1021`/`:1026`) and
+> inv16 `local_pods_are_bound_to_vrs_with_key` (`:979-1018`, resp16 at
+> `:968-977`) open list-response bodies and compare them against `resources s`
+> and the rv counter. (Anchors POST the P17 inv1 fix's +16-line shift,
+> re-anchored during the P17 review.) The claim is narrowed above to the
+> verified statement; `req_resp_correspondence.{ml,mli}` and `fault_check.mli`
+> carry the same narrowed claim. Verification of the narrowing = the
+> counterexample-class sweep `rg "list_resp_objs"` (all body-openers) plus the
+> scope analysis of its two consumers; the `rg "first|nothing before|No
+> shipped"` sweep only located claim sites to rewrite.
 
 P16 closes all three at once, by porting the upstream family whose guard lives
 in the third home.
@@ -163,9 +195,15 @@ this port.** No shipped reconciler issues a plain `Update_request` — VSTS, VRS
 and VDeployment all use `Get_then_update*`, which produces the DISTINCT
 `Get_then_update_response` constructor. The only other producer of an OK update
 response would be a pod-monkey `Update_pod` request, whose response carries the
-MONKEY's freshly-allocated `rpc_id` (`pod_monkey.ml:60-67`) and therefore cannot
+MONKEY's freshly-allocated `rpc_id` (`update_pod`, `pod_monkey.ml:87-100`, the
+allocation at `:90-92` — MEASURED-CORRECTION P17 F3, 2026-07-27: the original
+cite `:60-67` is inside `create_pod`, `:57-70`) and therefore cannot
 satisfy `resp_msg_matches_req_msg` against a controller's pending request without
-violating P14's already-shipped `every_in_flight_msg_has_unique_id`.
+violating P14's already-shipped
+`every_in_flight_msg_has_no_replicas_and_has_unique_id` (the SHIPPED member
+name — corrected per P17 F5; upstream's weaker derived
+`every_in_flight_msg_has_unique_id` is deliberately not shipped,
+correspondence.mli:135).
 
 Shipping Q4 load-bearing would reproduce P14's N5 failure exactly: a member whose
 premise is unreachable, whose "clean" verdict is empty, and whose per-member

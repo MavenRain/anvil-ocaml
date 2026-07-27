@@ -516,7 +516,7 @@ val check_reconcile_correspondence_under_faults :
   Bound.t ->
   budget ->
   desired:int ->
-  require_crash:bool ->
+  require_fault:bool ->
   fault_report
 (** {b G5} (BUILD-SPEC-P15 section 4.4): the RECONCILE-SIDE correspondence
     family ({!Reconcile_correspondence.family} = R1-R4) checked by
@@ -572,12 +572,23 @@ val check_reconcile_correspondence_under_faults :
     exists to exclude, and would decouple the measured leg from the validated
     predicates.
 
-    {b [require_crash] selects what [gate_states] counts,} P14's meaning
-    kept: [~require_crash:false] counts states where SOME member's
-    [interesting] fires (the pre-crash exercise floor, intended at
-    [zero_budget]); [~require_crash:true] additionally requires
-    [crashes >= 1] (the post-crash witness, intended at
-    {!budget_crash_only}). Per-member expectations (BUILD-SPEC-P15 section
+    {b [require_fault] selects what [gate_states] counts} - RENAMED from
+    [require_crash] and its crash conjunct generalised under the P16
+    review's F6 (applied on the P17 branch, next to P15's disclosure below):
+    the P16 options made drop / monkey edges takeable AT THIS LEG, and the
+    old [(not require_crash) || crashes >= 1] gate under a drop- or
+    monkey-only budget was structurally 0 SILENTLY. [~require_fault:false]
+    counts states where SOME member's [interesting] fires (the pre-fault
+    exercise floor, intended at [zero_budget]); [~require_fault:true]
+    additionally requires the leg's OWN fault counter [>= 1] - [crashes],
+    [drops] or [monkeys] according to which dimensions the budget permits
+    ([cap >= 1]), the same [budget_fault_taken] gate
+    {!check_req_resp_under_faults} documents. On every shipped run the
+    change is EXTENSIONALLY IDENTICAL to the old crash conjunct (each
+    [true] run uses a flags-off seed, where [drops] / [monkeys] are
+    identically 0, and a budget with [max_crashes = 1]); the full battery
+    was re-run on the rename and every committed pin below is UNCHANGED.
+    Per-member expectations (BUILD-SPEC-P15 section
     4.2), each justified not guessed: R1 needs at least TWO ongoing
     reconciles both holding [Some] pending requests, so its [interesting] is
     expected STRUCTURALLY 0 at [desired = 1] (one CR, one key: the inner
@@ -607,14 +618,14 @@ val check_reconcile_correspondence_under_faults :
     [depth = 40]; pinned once in [test/p15_witness.ml]; L0/L1 are the
     section-4.5 matrix's names for the two shipped legs):
 
-    - L0 ([zero_budget], [~require_crash:false]): [No_counterexample],
+    - L0 ([zero_budget], [~require_fault:false]): [No_counterexample],
       [decisive = true], 76 states, [gate_states = Some 64],
       [crash_witness_states = 0], [fault_free_states = 76],
       [max_uid_seen = 3], [max_rv_seen = 2], [max_crashes_seen = 0], both
       pruning flags [true]. 0.013 s CPU. Per-member [interesting]: R1 0
       (structurally vacuous at [desired = 1] - see below), R2 32, R3 32,
       R4 32.
-    - L1 ({!budget_crash_only}, [~require_crash:true]): [No_counterexample],
+    - L1 ({!budget_crash_only}, [~require_fault:true]): [No_counterexample],
       [decisive = true], 464 states, [gate_states = Some 304] (368 on the
       all-states union, recomputed over the replica),
       [crash_witness_states = 388], [fault_free_states = 76],
@@ -686,7 +697,7 @@ val check_reconcile_correspondence_under_faults :
     {b MEASURED (P16) - the premise re-measure AT THE LEG}
     ([t_p16_regression]'s p15_premise_releg group, run through THIS
     function; both runs at [desired = 1], the P13 bound shape,
-    [depth = 40], [~require_crash:false], every expected count DERIVED
+    [depth = 40], [~require_fault:false], every expected count DERIVED
     from the committed P15 probe pins, never re-typed):
 
     - drop ([~req_drop:true], budget [{0; 1; 0}]): [No_counterexample],
@@ -740,10 +751,17 @@ val check_req_resp_under_faults :
     sensitivity is determined by WHERE a guard lives. This leg carries the
     thesis onto the remaining two dimensions with the family whose members
     are the first to open a response message's BODY and relate it to
-    [s.api_server]: it is the first leg in the repo that can take a
-    [Step.Drop_req_step] or [Step.Pod_monkey_step] at all (BUILD-SPEC-P16
-    section 1 - P13 built the drop / monkey budget machinery and no shipped
-    seed ever switched it on).
+    [s.api_server] while quantifying over ALL in-flight messages
+    ({!Req_resp_correspondence}'s header carries the F1-narrowed claim and
+    its sweep: shipped inv15/inv16 already open list-response bodies, but
+    only for the single pending request of one decoded ongoing VRS
+    reconcile). These are the first legs whose RUNS take a
+    [Step.Drop_req_step] or [Step.Pod_monkey_step] under a measured fault
+    gate (BUILD-SPEC-P16 section 1, F2-corrected: P13 built the drop /
+    monkey budget machinery, and {!check_settles_after_disable} has seeded
+    all three fault flags TRUE since P13 - but its one shipped run used
+    {!budget_crash_only}, p13_witness.ml:53, so no shipped leg RUN ever
+    TOOK a drop or monkey edge before these).
 
     {b Seed and dimensions.} [Scenario.vsts_seed_faults ~desired ~crash:true
     ~req_drop ~pod_monkey ~vct ()]: the crash flag stays ON and its
@@ -779,7 +797,8 @@ val check_req_resp_under_faults :
     the counts stop being evidence about this leg.
 
     {b [require_fault] selects what [gate_states] counts,} generalising
-    P14/P15's [require_crash]: [~require_fault:false] counts states where
+    P14's [require_crash] (the P15 leg adopted the same [require_fault]
+    gate under P17 F6): [~require_fault:false] counts states where
     SOME selected member's [interesting] fires (the non-vacuity floor,
     intended at [zero_budget]); [~require_fault:true] additionally requires
     the leg's OWN fault counter [>= 1] - [crashes], [drops] or [monkeys]
@@ -924,6 +943,153 @@ val check_req_resp_under_faults :
     L0 / Ld / L0v / Ldv) against the ceiling 8, [max_rv_seen] peaks at 4
     against [rv_ceiling] 6 and [max_uid_seen] at 4 against [uid_ceiling]
     6. The predicted monkey orphan-inflation did not bind; no retune. *)
+
+val check_objects_in_store_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_fault:bool ->
+  fault_report
+(** {b G7} (BUILD-SPEC-P17 section 4): the STORE-SIDE object family
+    ({!Objects_in_store.store_family} = S1
+    [etcd_objects_have_unique_uids], S2
+    [each_object_in_etcd_is_weakly_well_formed], S3
+    [each_object_in_etcd_has_at_most_one_controller_owner] - physically the
+    inv1/inv2/inv3 records of {!Invariants.cluster_structural}, a filter,
+    never a copy) checked by reachability over the fault product.
+
+    {b What this leg is for.} It closes the fault-dimension triptych
+    (BUILD-SPEC-P17 section 1): P14/P15 attributed crash sensitivity to
+    where a guard LIVES (reconcile side vs network side), P16 measured the
+    drop dimension on message-side guards. All three store members are
+    guarded SERVER-SIDE in the api_server write handlers, so the predicted
+    signature is the mirror image - crash-insensitive (the crash empties
+    [ongoing_reconciles] and never touches [resources s]),
+    drop-insensitive (a dropped request fabricates an Error response;
+    the store write never happened), monkey-PREMISE-AMPLIFIED (the pod
+    monkey drives create/update/update-status/delete through the very
+    handlers the guards live in). Per BUILD-SPEC-P17 section 1 this is the
+    first family whose LEVERAGE edge is the monkey (P14/P15's decisive
+    edge was the crash, P16's the drop knife-edge; no earlier phase
+    attributed its headline to a monkey edge), and the store-side novelty
+    claim in its narrow, sweep-cited form lives in [objects_in_store.mli]
+    (the base suite has asserted these members since P13, but only inside
+    a UNION).
+
+    {b The family is asserted ALONE - the masking trap, INVERTED.} Unlike
+    the P14-P16 families, S1/S2/S3 ARE base-suite members: every prior
+    TRAJECTORY-LEG assertion of them under a fault budget evaluated them
+    only inside the conjunction of the full [always]/VSTS suites, where an
+    earlier-firing member could mask them and no per-member [interesting]
+    count was taken (the non-leg assertion sites - forged-state unit
+    checks, [first_violated] name pins, fault-FREE per-member counts - are
+    classified in [objects_in_store.mli]'s sweep). This leg asserts
+    the three alone with per-member counts: the first unmasked store-side
+    measurement. A [violated] naming any non-S1/S2/S3 member here means
+    the lists were unioned somewhere: harness bug, not a finding.
+    [t_p17_regression] pins the family as an INCLUSION in
+    [Invariants.cluster_structural] by (name, source) pair - the
+    DELIBERATE divergence from the P14-P16 disjointness pattern
+    (BUILD-SPEC-P17 section 2-REVISED); the four existing disjointness
+    guards remain in force (k3-strengthened to (name, source) pairs this
+    same phase - strengthened, not removed).
+
+    {b Same product graphs as P13-P16, by construction.} Same seed
+    ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey
+    ()], both options defaulting [false]), same [default_depth], same
+    {!faulted_successors} product - the graph depends only on (seed,
+    bound, budget, depth), never on the invariant list, so at P13's bound
+    and the four matrix budgets the graphs ARE P16's L0 / Lc / Ld / Lm
+    (76 / 464 / 744 / 1976 states) and the phases cross-check on
+    [states] / [crash_witness_states] / [fault_free_states] and the
+    achieved maxima. A [states] count that disagrees means the seed or
+    bound drifted: investigate before reporting anything.
+
+    {b No [?vct] - a deliberate scope cut (k6-class), disclosed.} The P16
+    leg needed [?vct] because Q1-Q3's premises die without a [Get_request]
+    producer; the store members' premises need only stored OBJECTS, which
+    exist from the seed on every graph ([vct:false] included), so the vct
+    dimension buys no de-vacuation here and its legs are deliberately out
+    of scope this phase. A future vct leg would measure the same members
+    over a PVC-bearing store - new content, not a repaired vacuity.
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on
+    {!check_req_resp_under_faults}: [false] counts states where SOME
+    member's [interesting] fires (the non-vacuity floor, intended at
+    [zero_budget]); [true] additionally requires {!budget_fault_taken}.
+    NOTE the floor SATURATES here: S2's [interesting] (store non-empty)
+    fires at every state because the seed itself stores the CR, so the
+    union gate always equals the counted slice and the discriminating
+    signal is in the PER-MEMBER counts (S1/S3 fire on proper subsets),
+    measured over the replicas in [t_p17_store]. Consequence (P17-review
+    disclosure): on these four graphs the union-interesting conjunct of
+    the gate is identically true, so the gate pins verify ONLY the
+    [require_fault] slice - trivializing (or dropping) the union conjunct
+    would move no shipped pin. Its red-capability is carried by the
+    per-member count pins, not by the gate; a future family whose union
+    does NOT saturate would make the conjunct load-bearing again.
+
+    {b MEASURED} (all at [desired = 1], the P13 bound shape, [depth = 40],
+    [vct] absent; pinned once in [test/p17_witness.ml]; wall times from
+    the B3 measurement run, same machine as the battery):
+
+    - L0 ([zero_budget], [~require_fault:false]): [No_counterexample],
+      [decisive = true], 76 states, [gate_states = Some 76] (saturated -
+      see above), [crash_witness_states = 0], [fault_free_states = 76],
+      [max_uid_seen = 3], [max_rv_seen = 2], both pruning flags [true].
+      0.010 s. Per-member [interesting]: S1 52, S2 76, S3 52 - S1 is 0 at
+      the seed (one stored object) and fires only after the first create,
+      the spec section 4 prediction, measured.
+    - Lc ({!budget_crash_only}, [~require_fault:true]): clean, decisive,
+      464 states, [gate_states = Some 388] (= the whole post-crash
+      slice), 388 / 76 crash-witness / fault-free, crash edge really
+      taken, maxima 3 / 2. 0.059 s. Per-member all-states / post-crash:
+      S1 296 / 244, S2 464 / 388, S3 296 / 244. {b PREDICTION CONFIRMED
+      as a measured negative} (the P15-A mirror): the crash moves NO
+      store-side truth - the store premises keep firing across the crash
+      and all three members hold at every post-crash state.
+    - Ld (drop-only [{0; 1; 0}], [~req_drop:true],
+      [~require_fault:true]): clean, decisive, 744 states,
+      [gate_states = Some 592] (= the post-drop slice),
+      [fault_free_states = 152], drop edge really taken, maxima 3 / 2 -
+      L0's exact values: the drop edge NEVER touches store content.
+      0.130 s. Per-member all-states / post-drop: S1 376 / 272,
+      S2 744 / 592, S3 376 / 272. {b HONEST NEGATIVE - the section 4
+      "Ld premise counts ~ L0's" prediction is REFUTED under the density
+      reading}: S1/S3 fire at 376/744 = 50.5% vs L0's 52/76 = 68.4% -
+      the fabricated Error response stalls the reconciler's create on the
+      dropped branch and dilutes the >= 2-objects slice. The mechanism
+      half (store untouched) stands, measured via the maxima.
+    - Lm (monkey-only [{0; 0; 1}], [~pod_monkey:true],
+      [~require_fault:true]): clean, decisive, 1976 states,
+      [gate_states = Some 1824] (= the post-monkey slice),
+      [fault_free_states = 152], monkey edge really taken,
+      [max_uid_seen = max_rv_seen = 4] - the ONLY [vct:false] graph where
+      the maxima rise (P16-D's transitive-write datum, re-read here as
+      the monkey's create genuinely landing in etcd). 0.782 s.
+      Per-member all-states / post-monkey: S1 1624 / 1520, S2 1976 /
+      1824, S3 1624 / 1520. {b PREDICTION CONFIRMED - the monkey is the
+      leverage edge}: premise density rises to 82.2% (vs 68.4% L0,
+      63.8% Lc, 50.5% Ld) and the churn rides the real handlers, yet all
+      three members hold at every state: the server-side guards absorb
+      it. The clean verdict is a negative result and is recorded as a
+      measurement, never dressed as a pass.
+    - MEASURED COINCIDENCE, asserted per leg in [t_p17_store]: S3's count
+      equals S1's on all four graphs (52 / 296 / 376 / 1624) - the first
+      pod create is the reconciler's and carries the controller ref, so
+      the >= 2-objects and controller-ref slices coincide on THESE
+      graphs. A scenario fact, not a law.
+
+    {b Exclusion pins} (BUILD-SPEC-P17 section 3, measured in
+    [t_p17_regression] over the L0 replica): E1's well-formed
+    strengthening delta is extensionally EMPTY (0 of 76 states differ,
+    kind-coverage control 0) and E2's contradictory premise is
+    UNSATISFIABLE (0 of 76, vsts-kind control 76) - both exclusions
+    measured, not asserted. See [objects_in_store.mli] for the upstream
+    citations and the B2 audit verdicts. *)
 
 val check_unique_reconcile_id_under_faults :
   ?depth:int -> Bound.t -> budget -> desireds:int list -> fault_report

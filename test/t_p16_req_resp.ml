@@ -9,9 +9,11 @@
    WHAT THIS EXE ESTABLISHES.
 
    1. THE FIRST DROP AND MONKEY EDGES EVER TAKEN IN DECISIVE LEGS
-      (BUILD-SPEC-P16 §1): Ld is clean and decisive with
+      (BUILD-SPEC-P16 §1, F2-corrected): Ld is clean and decisive with
       [max_drops_seen = 1], Lm with [max_monkeys_seen = 1] - the vacuity
-      P15 disclosed (no shipped seed could enable either edge) is
+      P15 disclosed (no shipped leg RUN ever took either edge: the one
+      all-flags-on seed, [check_settles_after_disable]'s, shipped running
+      at [budget_crash_only] - p13_witness.ml:53) is
       discharged AT THE LEG. Both clean verdicts are NEGATIVE results
       (§8.4) and are asserted as measurements, never dressed as passes.
 

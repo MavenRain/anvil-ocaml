@@ -156,11 +156,28 @@ let cluster_structural ~controller_id =
       source = "kubernetes_cluster/proof/objects_in_store.rs:23";
       holds =
         (fun s ->
+          (* P17 Deliverable-A fidelity fix (Objects_in_store audit): upstream
+             compares the TOTAL projection [uid->0] (objects_in_store.rs:29),
+             under which Verus's [None->0] is ONE fixed (unspecified) value —
+             so two stored objects with [uid = None] have EQUAL projections
+             and VIOLATE S1 upstream. The previous [filter_map] dropped them
+             (port weaker than upstream). [-1] renders that single [None]
+             projection: it sits outside the minted range ([uid_counter]
+             stamping, api_server.ml:272; every SHIPPED seed floors the
+             counters at >= 1 - the type admits no init floor,
+             api_server.mli:72), so two [None]s
+             collide exactly as upstream while a [None]/[Some] pair stays
+             distinct (upstream that case is unprovable either way; [-1] is a
+             representative of the unique minted-range-consistent extension
+             CLASS - any out-of-minted-range sentinel is extensionally
+             identical on minted-uid states). Latent under
+             inv2 (which forces [uid] [Some] on every stored object), hence
+             extensionally unchanged on every inv2-green graph. *)
           let uids =
-            List.filter_map
+            List.map
               (fun obj ->
                 let md : Object_meta.t = Dynamic_object.metadata obj in
-                Option.map Common.Uid.to_int md.uid)
+                Option.fold md.uid ~none:(-1) ~some:Common.Uid.to_int)
               (etcd_objs s)
           in
           List.length (List.sort_uniq compare uids) = List.length uids);
@@ -388,11 +405,14 @@ let partition ~cr ~controller_id =
       source = "kubernetes_cluster/proof/objects_in_store.rs:23";
       holds =
         (fun s ->
+          (* P17 Deliverable-A fidelity fix — same total-[uid->0] rendering as
+             the {!cluster_structural} copy above (see the comment there); the
+             firewall doc (:140-144) requires the two bodies to stay exact. *)
           let uids =
-            List.filter_map
+            List.map
               (fun obj ->
                 let md : Object_meta.t = Dynamic_object.metadata obj in
-                Option.map Common.Uid.to_int md.uid)
+                Option.fold md.uid ~none:(-1) ~some:Common.Uid.to_int)
               (etcd_objs s)
           in
           List.length (List.sort_uniq compare uids) = List.length uids);

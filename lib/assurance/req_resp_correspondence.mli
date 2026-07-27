@@ -1,11 +1,24 @@
 (** BUILD-SPEC-P16: the REQUEST/RESPONSE correspondence family, four Anvil
     [StatePred<ClusterState>]s from
-    [src/kubernetes_cluster/proof/req_resp.rs], the first shipped members that
-    open a response message's BODY and relate it to [s.api_server]. P14's
-    N-family ({!Correspondence}) reads only [rpc_id]s; P15's R-family
-    ({!Reconcile_correspondence}) reads only [pending_req_msg] identity;
-    nothing before this module related a message to etcd at all
-    (BUILD-SPEC-P16 section 1). Transcribed against the durable upstream
+    [src/kubernetes_cluster/proof/req_resp.rs], the first shipped members
+    that open a response message's BODY and relate it to [s.api_server]
+    WHILE quantifying over ALL in-flight messages. Both halves of that
+    qualifier are load-bearing (P16-review correction F1; verified against
+    the counterexample CLASS directly, 2026-07-27: [rg "list_resp_objs"]
+    enumerates every shipped response-body opener - resp15/resp16 only - and
+    the two consumers below are scope-checked; the
+    [rg "first|nothing before|No shipped"] sweep located the claim SITES to
+    rewrite, it is not the verification):
+    P14's N-family ({!Correspondence}) quantifies over all in-flight
+    messages but reads only [rpc_id]s, and P15's R-family
+    ({!Reconcile_correspondence}) reads only [pending_req_msg] identity -
+    neither opens a body - while shipped inv15
+    [filtered_pods_invariant_matrix] and inv16
+    [local_pods_are_bound_to_vrs_with_key] ([Invariants.always],
+    invariants.ml:872-965 / :968-1018) DO open list-response bodies and
+    relate them to [resources s] / the rv counter, but only for the single
+    pending list request of one decoded ongoing VRS reconcile, never over
+    all in-flight messages. Transcribed against the durable upstream
     checkout at [~/Documents/anvil-ref], so every [source] string is
     checkable:
 
@@ -46,7 +59,9 @@
     [Get_then_update_response] constructor and so can never satisfy Q4's
     [is_ok_update_response] premise. The only other producer of an OK update
     response would be a pod-monkey [Update_pod] request, whose response
-    carries the monkey's freshly allocated [rpc_id] (pod_monkey.ml:57-69) and
+    carries the monkey's freshly allocated [rpc_id] ([update_pod],
+    pod_monkey.ml:87-100, allocation at :90-92; :57-69 is [create_pod] -
+    cite corrected per P16-review F3) and
     therefore cannot satisfy [resp_msg_matches_req_msg] against a
     controller's pending request without violating the already-shipped P14
     member [every_in_flight_msg_has_no_replicas_and_has_unique_id]. Shipping
@@ -114,7 +129,20 @@ val object_in_ok_get_resp_is_same_as_etcd_with_same_rv :
 
     Both [resource_version->0] projections are rendered as "both [Some] and
     equal", so a missing resource version fails the premise (vacuity) rather
-    than comparing arbitrary values as upstream's partial projection would.
+    than comparing arbitrary values. {b Disclosed DIRECTION of that
+    deviation (P16-review F4).} In Verus the [->0] projection is TOTAL, so
+    at a state where BOTH rvs are [None] upstream's rv-equality premise is
+    reflexively TRUE and upstream Q2 DEMANDS object equality there; this
+    rendering makes that premise FALSE instead, so the port ACCEPTS
+    both-[None] states upstream rejects - a premise STRENGTHENING, i.e. an
+    invariant WEAKENING. Latent exactly as long as every stored object
+    carries [Some] resource_version, which is upstream's
+    [each_object_in_etcd_is_weakly_well_formed] (objects_in_store.rs:33) -
+    shipped here as inv2 (invariants.ml:184-204, in
+    [Invariants.cluster_structural] / [always]) but never asserted on a
+    P16 leg (the section-4.4 masking discipline keeps the suites separate),
+    so on the P16 graphs the unreachability of both-[None] remains an
+    ARGUMENT until BUILD-SPEC-P17 measures the premise store-side.
     [interesting] fires iff Q2's OWN full premise fires at a key the closure
     actually visits: some in-flight OK get response matching a stored bound
     key with equal resource version. Predicted zero under the vct:false seed

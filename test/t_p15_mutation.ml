@@ -643,11 +643,11 @@ let test_me_side_condition_checkers_reject () =
 let test_ma_m1_leg_anchor () =
   let l0 =
     Fc.check_reconcile_correspondence_under_faults ~depth bound
-      P15_witness.zero_budget ~desired ~require_crash:false
+      P15_witness.zero_budget ~desired ~require_fault:false
   in
   let l1 =
     Fc.check_reconcile_correspondence_under_faults ~depth bound
-      P15_witness.l1_budget ~desired ~require_crash:true
+      P15_witness.l1_budget ~desired ~require_fault:true
   in
   (* The violated NAMES first, as strings, so a red run prints the member. *)
   Alcotest.(check string) "MA/M1 anchor: L0 (control) violated names NOTHING"

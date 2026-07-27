@@ -863,6 +863,10 @@ let test_md_converse_control () =
   Alcotest.(check bool) "MD converse: Ld/Rv clean" true (report_clean ld_rv);
   Alcotest.(check bool) "MD converse: Ld/Matched decisive" true
     (report_decisive ld_m);
+  (* F7 (P16 review): without this, a frontier-truncated [No_counterexample]
+     under a manual mutant reads as clean on the Rv leg. *)
+  Alcotest.(check bool) "MD converse: Ld/Rv decisive" true
+    (report_decisive ld_rv);
   (* The stated reason, half one: the drop edge REALLY taken. *)
   Alcotest.(check bool)
     "MD converse: drop edge REALLY taken (max_drops_seen >= 1)" true
@@ -1002,6 +1006,19 @@ let test_manual_anchor () =
   Alcotest.(check bool) "anchor: Lc/Matched clean" true (report_clean lc_m);
   Alcotest.(check bool) "anchor: Lm/Rv clean" true (report_clean lm_rv);
   Alcotest.(check bool) "anchor: L0v/Rv clean" true (report_clean l0v_rv);
+  (* F7 (P16 review): [report_clean] alone lets a frontier-truncated
+     [No_counterexample] under a manual mutant read as clean - each anchor
+     leg must also be DECISIVE (the unmutated legs are, so the battery
+     stays green; under a manual mutant the protocol now fails loud). *)
+  Alcotest.(check bool) "anchor: L0/Rv decisive" true (report_decisive l0_rv);
+  Alcotest.(check bool) "anchor: L0/Matched decisive" true
+    (report_decisive l0_m);
+  Alcotest.(check bool) "anchor: Lc/Rv decisive" true (report_decisive lc_rv);
+  Alcotest.(check bool) "anchor: Lc/Matched decisive" true
+    (report_decisive lc_m);
+  Alcotest.(check bool) "anchor: Lm/Rv decisive" true (report_decisive lm_rv);
+  Alcotest.(check bool) "anchor: L0v/Rv decisive" true
+    (report_decisive l0v_rv);
   Alcotest.(check bool) "anchor: Lc crash REALLY taken" true
     (lc_m.max_crashes_seen >= 1);
   Alcotest.(check bool) "anchor: Lm monkey REALLY taken" true

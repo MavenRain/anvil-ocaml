@@ -19,7 +19,8 @@
       harness bug, not a finding"): under mutation MD the intended witness is
       Q5 BY NAME; a leg unioned with any earlier family could report an
       earlier-firing member (P14's N1 fires at [steps = 6] under MA) and bury
-      the phase's headline. The disjointness tests below reject that by NAME.
+      the phase's headline. The disjointness tests below reject that by
+      (name, source) pair (k3-strengthened, P17 §7).
 
    3. THE TWO-LIST REASON (new in P16): the rv/matched split IS the thesis
       under test, so the two lists must also be disjoint from EACH OTHER - a
@@ -42,8 +43,12 @@
            Ldv replicas) and assert no in-flight plain update exists from
            any non-monkey source (the pod monkey's [Update_pod] is the ONE
            sanctioned plain-update producer, and its presence on Lm is the
-           detector's own non-vacuity control).
-     If either ever reddens, a controller gained a plain update path: Q4
+           detector's own non-vacuity control);
+       (c) Q4's PREMISE side on the Lm graph (k2, P17 §7): zero in-flight OK
+           update responses MATCH a pending request
+           ([resp_msg_matches_req_msg]), with the bare in-flight OK-update
+           count as the control.
+     If any of these reddens, a controller gained a plain update path: Q4
      becomes portable and the §2 exclusion note must be revisited. This pin
      also witnesses ONE conjunct of why mutation MS measured INERT, namely
      that the monkey is the only plain-update producer. The other conjunct -
@@ -293,6 +298,30 @@ let matched_family : Invariants.invariant list = Rr.matched_family ~controller_i
 let names_of (invs : Invariants.invariant list) : string list =
   List.map (fun (i : Invariants.invariant) -> i.Invariants.name) invs
 
+(* (name, source) pairs - the k3-strengthened identity for the two
+   disjointness guards below (P17 §7): the NAME-string proxy missed a leaked
+   member re-shipped under a different OCaml name (it keeps its upstream
+   [source] citation), and a shipped member reusing one of these NAMES with
+   a different source would still poison [violated] attribution - so a hit
+   on EITHER component is reported. *)
+let pairs_of (invs : Invariants.invariant list) : (string * string) list =
+  List.map
+    (fun (i : Invariants.invariant) -> (i.Invariants.name, i.Invariants.source))
+    invs
+
+let pair_leaks (label : string) (family_pairs : (string * string) list)
+    (suite_pairs : (string * string) list) : string list =
+  List.concat_map
+    (fun ((n, src) : string * string) ->
+      List.filter_map
+        (fun ((n', src') : string * string) ->
+          if String.equal n n' then Some (label ^ " contains name " ^ n)
+          else if String.equal src src' then
+            Some (label ^ " contains source " ^ src ^ " (as " ^ n' ^ ")")
+          else None)
+        suite_pairs)
+    family_pairs
+
 (* Every list a PRIOR phase's leg consumes, instantiated exactly as those legs
    instantiate them - the five suites P15's firewall guarded PLUS
    {!Reconcile_correspondence.family} itself, shipped at [2c07fd1] and
@@ -329,12 +358,9 @@ let test_families_are_disjoint_from_shipped_suites () =
   let leaked =
     List.concat_map
       (fun ((suite, invs) : string * Invariants.invariant list) ->
-        List.filter_map
-          (fun (n : string) ->
-            Option.map
-              (fun (hit : string) -> suite ^ " contains " ^ hit)
-              (List.find_opt (String.equal n) (names_of invs)))
-          (rv_upstream_names @ matched_upstream_names))
+        pair_leaks suite
+          (pairs_of rv_family @ pairs_of matched_family)
+          (pairs_of invs))
       shipped_suites
   in
   Alcotest.(check (list string))
@@ -344,12 +370,10 @@ let test_families_are_disjoint_from_shipped_suites () =
    under test, so the lists must not share a member either. *)
 let test_the_two_lists_are_disjoint_from_each_other () =
   let shared =
-    List.filter_map
-      (fun (n : string) -> List.find_opt (String.equal n) (names_of matched_family))
-      (names_of rv_family)
+    pair_leaks "matched_family" (pairs_of rv_family) (pairs_of matched_family)
   in
   Alcotest.(check (list string))
-    "rv_family and matched_family share no member" [] shared
+    "rv_family and matched_family share no member (name or source)" [] shared
 
 (* And the reverse direction: no P14/P15 member leaked INTO either P16 list -
    the union that would arm the masking trap on P16's own legs. The nine
@@ -815,6 +839,55 @@ let msg_is_controller_request (m : Message.t) : bool =
   | Message.External_response _ ->
     false
 
+(* -- (c) Q4's PREMISE side, counted on the Lm graph (k2, P17 §7) ------------
+   The request-side pins above are necessary but not premise-shaped: Q4's
+   antecedent is an in-flight OK [Update_response] that MATCHES
+   ([Message.resp_msg_matches_req_msg]) the pending request of some ongoing
+   reconcile. Lm is the one [vct:false] leg graph where plain updates are
+   fielded at all (the monkey's [Update_pod]), so the count below measures
+   the premise where it has its best chance; the bare in-flight OK-update
+   count is the detector's own non-vacuity control. A NONZERO matched count
+   REOPENS the §2 Q4 exclusion argument. *)
+let msg_is_ok_update_response (m : Message.t) : bool =
+  match m.Message.content with
+  | Message.Api_response r ->
+    (match r with
+    | Api_method.Update_response { res } ->
+      Result.fold res
+        ~ok:(fun (_ : Dynamic_object.t) -> true)
+        ~error:(fun (_ : Api_method.api_error) -> false)
+    | Api_method.Get_response _ | Api_method.List_response _
+    | Api_method.Create_response _ | Api_method.Delete_response _
+    | Api_method.Update_status_response _
+    | Api_method.Get_then_delete_response _
+    | Api_method.Get_then_update_response _
+    | Api_method.Get_then_update_status_response _ ->
+      false)
+  | Message.Api_request _ | Message.External_request _
+  | Message.External_response _ ->
+    false
+
+let matches_some_pending (cs : Cluster.cluster_state) (m : Message.t) : bool =
+  Object_ref_map.fold
+    (fun (_ : Common.object_ref) (rs : Controller.ongoing_reconcile)
+         (acc : bool) ->
+      acc
+      || Option.fold ~none:false
+           ~some:(fun (req : Message.t) ->
+             Message.resp_msg_matches_req_msg m req)
+           rs.Controller.pending_req_msg)
+    (Cluster.ongoing_reconciles cs controller_id)
+    false
+
+let matched_ok_update_count (reach : Fc.faulted Mc.reachable) : int =
+  Mc.fold_states reach ~init:0 ~f:(fun (acc : int) (f : Fc.faulted) ->
+      acc
+      + List.length
+          (List.filter
+             (fun (m : Message.t) ->
+               msg_is_ok_update_response m && matches_some_pending f.cs m)
+             (Message.Pool.distinct (Cluster.in_flight f.cs))))
+
 let test_q4_reachable_request_sets () =
   let lc = Lazy.force lc_reach in
   let lm = Lazy.force lm_reach in
@@ -850,7 +923,17 @@ let test_q4_reachable_request_sets () =
     (in_flight_count lc ~pred:msg_is_controller_request >= 1);
   Alcotest.(check bool)
     "sweep non-vacuity: controller-sourced requests in flight on Ldv" true
-    (in_flight_count ldv ~pred:msg_is_controller_request >= 1)
+    (in_flight_count ldv ~pred:msg_is_controller_request >= 1);
+  (* (c) the k2 premise-side count (P17 §7). *)
+  Alcotest.(check int)
+    "Lm: ZERO matched OK update responses (Q4's premise side - a nonzero \
+     here REOPENS the §2 exclusion)"
+    0 (matched_ok_update_count lm);
+  Alcotest.(check bool)
+    "premise-count non-vacuity: OK update responses DO reach the in-flight \
+     set on Lm (the zero above is measured, not blind)"
+    true
+    (in_flight_count lm ~pred:msg_is_ok_update_response >= 1)
 
 (* ==== 4. the §4.5 premise re-measure AT THE LEG ============================ *)
 
@@ -865,7 +948,7 @@ let test_q4_reachable_request_sets () =
 let test_p15_drop_premise_at_the_leg () =
   let r =
     Fc.check_reconcile_correspondence_under_faults ~depth ~req_drop:true bound
-      P16_witness.ld_budget ~desired ~require_crash:false
+      P16_witness.ld_budget ~desired ~require_fault:false
   in
   Alcotest.(check string) "violated: none" "<none>" (violated_name r);
   Alcotest.(check bool) "clean" true (is_clean r);
@@ -887,7 +970,7 @@ let test_p15_drop_premise_at_the_leg () =
 let test_p15_monkey_premise_at_the_leg () =
   let r =
     Fc.check_reconcile_correspondence_under_faults ~depth ~pod_monkey:true bound
-      P16_witness.lm_budget ~desired ~require_crash:false
+      P16_witness.lm_budget ~desired ~require_fault:false
   in
   Alcotest.(check string) "violated: none" "<none>" (violated_name r);
   Alcotest.(check bool) "clean" true (is_clean r);

@@ -6,8 +6,12 @@
    at ~/Documents/anvil-ref, not reconstructed from memory.
 
    These are the first shipped members that read a response message's BODY and
-   relate it to [s.api_server] (BUILD-SPEC-P16 section 1): P14's N-family reads
-   only [rpc_id]s and P15's R-family reads only [pending_req_msg] identity.
+   relate it to [s.api_server] while quantifying over ALL in-flight messages
+   (BUILD-SPEC-P16 section 1, F1-narrowed - the sweep and both neighbour
+   classes are cited in the .mli header): P14's N-family reads only [rpc_id]s
+   and P15's R-family reads only [pending_req_msg] identity, while
+   invariants.ml's inv15/inv16 already open list-response bodies but only for
+   the single pending request of one decoded ongoing VRS reconcile.
    The family SPLITS INTO TWO LISTS by guard home, and that split is the
    phase's thesis under test, not cosmetics: {!rv_family} (Q1, Q2) is guarded
    on network + etcd and never reads a reconcile; {!matched_family} (Q3, Q5)

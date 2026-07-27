@@ -97,24 +97,24 @@ let gate_of (r : Fc.fault_report) : int = Option.value r.gate_states ~default:(-
 
 (* ==== the five legs (lazy: no test pays for an exploration it does not use) = *)
 
-let leg (budget : Fc.budget) ~(require_crash : bool) : Fc.fault_report =
+let leg (budget : Fc.budget) ~(require_fault : bool) : Fc.fault_report =
   Fc.check_reconcile_correspondence_under_faults ~depth bound budget ~desired
-    ~require_crash
+    ~require_fault
 
 let l0_report : Fc.fault_report Lazy.t =
-  lazy (leg P15_witness.zero_budget ~require_crash:false)
+  lazy (leg P15_witness.zero_budget ~require_fault:false)
 
 let l1_report : Fc.fault_report Lazy.t =
-  lazy (leg P15_witness.l1_budget ~require_crash:true)
+  lazy (leg P15_witness.l1_budget ~require_fault:true)
 
 let l2_report : Fc.fault_report Lazy.t =
-  lazy (leg P15_witness.l2_budget ~require_crash:false)
+  lazy (leg P15_witness.l2_budget ~require_fault:false)
 
 let l3_report : Fc.fault_report Lazy.t =
-  lazy (leg P15_witness.l3_budget ~require_crash:false)
+  lazy (leg P15_witness.l3_budget ~require_fault:false)
 
 let l4_report : Fc.fault_report Lazy.t =
-  lazy (leg P15_witness.l4_budget ~require_crash:true)
+  lazy (leg P15_witness.l4_budget ~require_fault:true)
 
 (* ==== the family, and its members individually ==============================
    Instantiated EXACTLY as the leg instantiates them: R2/R4 over the leg's own
@@ -184,7 +184,7 @@ let fires (reach : Fc.faulted Mc.reachable) ~(slice : Fc.faulted -> bool)
       slice f && i.Invariants.interesting f.cs)
 
 (* The union gate the leg computes, recomputed locally - what lets the tests
-   pin the all-states union on a [require_crash:true] leg. *)
+   pin the all-states union on a [require_fault:true] leg. *)
 let union_gate (reach : Fc.faulted Mc.reachable) ~(slice : Fc.faulted -> bool) :
     int =
   Mc.count_states_where reach (fun (f : Fc.faulted) ->

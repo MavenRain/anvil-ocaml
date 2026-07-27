@@ -38,7 +38,8 @@
       ([fault_check.ml:326-332]): a member appended to {!Vsts_invariants.always}
       that HOLDS everywhere and whose [interesting] never fires changes neither
       [states] nor [gate_states]. It would still have silently reclassified the
-      family. [test_family_is_disjoint_from_shipped_suites] rejects that by NAME,
+      family. [test_family_is_disjoint_from_shipped_suites] rejects that by
+      (name, source) pair (k3-strengthened, P17 §7),
       not by count.
 
    List lengths are deliberately NOT pinned: a later phase may legitimately
@@ -122,6 +123,30 @@ let family : Invariants.invariant list =
 let names_of (invs : Invariants.invariant list) : string list =
   List.map (fun (i : Invariants.invariant) -> i.Invariants.name) invs
 
+(* (name, source) pairs - the k3-strengthened identity for the disjointness
+   guard (P17 §7): the NAME-string proxy missed a leaked member re-shipped
+   under a different OCaml name (it keeps its upstream [source] citation),
+   and a shipped member reusing one of these NAMES with a different source
+   would still poison [violated] attribution - so a hit on EITHER component
+   is reported. *)
+let pairs_of (invs : Invariants.invariant list) : (string * string) list =
+  List.map
+    (fun (i : Invariants.invariant) -> (i.Invariants.name, i.Invariants.source))
+    invs
+
+let pair_leaks (label : string) (family_pairs : (string * string) list)
+    (suite_pairs : (string * string) list) : string list =
+  List.concat_map
+    (fun ((n, src) : string * string) ->
+      List.filter_map
+        (fun ((n', src') : string * string) ->
+          if String.equal n n' then Some (label ^ " contains name " ^ n)
+          else if String.equal src src' then
+            Some (label ^ " contains source " ^ src ^ " (as " ^ n' ^ ")")
+          else None)
+        suite_pairs)
+    family_pairs
+
 (* Every list that P13's G1 / P12's gate / the fault-free [cluster_check] legs
    read, instantiated exactly as those legs instantiate them
    ([fault_check.ml:311-318]). *)
@@ -144,12 +169,7 @@ let test_family_is_disjoint_from_shipped_suites () =
   let leaked =
     List.concat_map
       (fun ((suite, invs) : string * Invariants.invariant list) ->
-        List.filter_map
-          (fun (n : string) ->
-            Option.map
-              (fun (hit : string) -> suite ^ " contains " ^ hit)
-              (List.find_opt (String.equal n) (names_of invs)))
-          upstream_names)
+        pair_leaks suite (pairs_of family) (pairs_of invs))
       shipped_suites
   in
   Alcotest.(check (list string))

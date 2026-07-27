@@ -442,13 +442,30 @@ let vsts_none_states : Value.t -> bool =
   vsts_decode_step (fun (step : V_stateful_set_reconciler.step) ->
       not (vsts_step_expects_pending step))
 
+(* "The leg's OWN fault counter reached 1", where "own" is read off the BUDGET:
+   a dimension counts only if the budget permits it at all ([cap >= 1]) and this
+   state has actually taken such an edge. At {!budget_crash_only} this is
+   [crashes >= 1] (P14's [require_crash] meaning); at a drop-only or
+   monkey-only budget it is [drops >= 1] / [monkeys >= 1]; at [zero_budget]
+   the disjunction is empty and the gate is 0 BY CONSTRUCTION (the P14 lesson:
+   such a gate cannot serve as a fault-disabled non-vacuity floor - use
+   [require_fault:false] there). Gates BOTH G5 and G6 since P17 F6. *)
+let budget_fault_taken (b : budget) (f : faulted) : bool =
+  (b.max_crashes >= 1 && f.crashes >= 1)
+  || (b.max_drops >= 1 && f.drops >= 1)
+  || (b.max_monkey_ops >= 1 && f.monkeys >= 1)
+
 (* G5. The RECONCILE-SIDE correspondence family
    ({!Reconcile_correspondence.family} = R1-R4, every guard on the
    ongoing-reconcile side where every P14 member's is on the network side)
    refuted by reachability over the fault product. Structurally
    {!check_correspondence_under_faults} with a different invariant list: same
-   seed construction, same pointwise lift ([fun f -> inv f.cs]), same
-   [require_crash] gate selector and the same [default_depth] - so at P13's
+   seed construction, same pointwise lift ([fun f -> inv f.cs]), the same
+   gate-selector SHAPE ([require_fault] here - P17 F6 generalised the crash
+   conjunct to {!budget_fault_taken}, extensionally identical to the old
+   [require_crash] gate on every shipped run: each [true] run uses a seed
+   with the drop/monkey flags OFF, where [drops]/[monkeys] are identically
+   0) and the same [default_depth] - so at P13's
    bound / depth / budget the product graph is the SAME one P13 G1 and P14 G2
    explored, the three phases cross-check on [states] /
    [crash_witness_states] / [fault_free_states], and ONLY the asserted family
@@ -473,7 +490,7 @@ let vsts_none_states : Value.t -> bool =
    makes the edge EXIST, the budget makes it TAKEABLE). *)
 let check_reconcile_correspondence_under_faults ?(depth = default_depth)
     ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
-    (budget : budget) ~(desired : int) ~(require_crash : bool) : fault_report =
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
   let controller_id = Scenario.controller_id in
   let cluster = Scenario.vsts_cluster in
   let seed =
@@ -493,7 +510,7 @@ let check_reconcile_correspondence_under_faults ?(depth = default_depth)
     ~gate:(fun reach ->
       Some
         (Model_check.count_states_where reach (fun (f : faulted) ->
-             ((not require_crash) || f.crashes >= 1)
+             ((not require_fault) || budget_fault_taken budget f)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
@@ -504,19 +521,6 @@ let check_reconcile_correspondence_under_faults ?(depth = default_depth)
    are asserted SEPARATELY and never unioned - with each other or with any
    other shipped suite (the masking trap, see the .mli). *)
 type list_select = Rv_list | Matched_list
-
-(* "The leg's OWN fault counter reached 1", where "own" is read off the BUDGET:
-   a dimension counts only if the budget permits it at all ([cap >= 1]) and this
-   state has actually taken such an edge. At {!budget_crash_only} this is
-   [crashes >= 1] (P14/P15's [require_crash] meaning); at a drop-only or
-   monkey-only budget it is [drops >= 1] / [monkeys >= 1]; at [zero_budget]
-   the disjunction is empty and the gate is 0 BY CONSTRUCTION (the P14 lesson:
-   such a gate cannot serve as a fault-disabled non-vacuity floor - use
-   [require_fault:false] there). *)
-let budget_fault_taken (b : budget) (f : faulted) : bool =
-  (b.max_crashes >= 1 && f.crashes >= 1)
-  || (b.max_drops >= 1 && f.drops >= 1)
-  || (b.max_monkey_ops >= 1 && f.monkeys >= 1)
 
 (* G6. The P16 request/response correspondence lists
    ({!Req_resp_correspondence.rv_family} = Q1-Q2, network + etcd guarded;
@@ -530,18 +534,23 @@ let budget_fault_taken (b : budget) (f : faulted) : bool =
    one P13 G1 / P14 G2 / P15 L1 explored and the phases cross-check on
    [states] / [crash_witness_states] / [fault_free_states].
 
-   Unlike every prior leg, the drop and monkey dimensions are REACHABLE here:
+   Unlike every prior leg RUN, the drop and monkey dimensions are TAKEN here:
    [?req_drop] / [?pod_monkey] thread to the seed flags (edge EXISTS) and the
-   budget caps make the edges TAKEABLE - the first legs in the repo that can
-   take a [Step.Drop_req_step] or [Step.Pod_monkey_step] at all
-   (BUILD-SPEC-P16 section 1). [?vct] threads to the seeded CR: [true] makes
+   budget caps make the edges TAKEABLE - the first legs in the repo whose
+   runs take a [Step.Drop_req_step] or [Step.Pod_monkey_step] under a
+   measured fault gate (BUILD-SPEC-P16 section 1, F2-corrected:
+   {!check_settles_after_disable}'s all-flags-on seed could always take one,
+   but its one shipped run used {!budget_crash_only} - p13_witness.ml:53 -
+   so no shipped leg run ever TOOK either edge before these).
+   [?vct] threads to the seeded CR: [true] makes
    the reconciler's PVC arm (hence [Get_request]s, hence OK get responses)
    reachable, de-vacuifying Q1/Q2/Q3 (P16-E). Q2's bound-key closure is
    instantiated with THIS leg's [bound], the coupling the family module
    documents: passing a different bound would decouple the closure from the
    explored graph.
 
-   [require_fault] generalises P14/P15's [require_crash]: [false] counts
+   [require_fault] generalises P14's [require_crash] (the P15 leg above
+   adopted the same [require_fault] gate under P17 F6): [false] counts
    states where SOME selected member's [interesting] fires (the non-vacuity
    floor, intended at [zero_budget]); [true] additionally requires
    {!budget_fault_taken} (the post-fault witness, whichever dimension the
@@ -563,6 +572,54 @@ let check_req_resp_under_faults ?(depth = default_depth) ?(req_drop = false)
     | Rv_list -> Req_resp_correspondence.rv_family bound
     | Matched_list -> Req_resp_correspondence.matched_family ~controller_id
   in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
+(* ---- G7 (BUILD-SPEC-P17 section 4): the store-side object family ---- *)
+
+(* G7. The P17 store-side family ({!Objects_in_store.store_family} = S1-S3,
+   PHYSICALLY the inv1/inv2/inv3 records of {!Invariants.cluster_structural} -
+   a filter, not a copy) asserted ALONE by reachability over the fault
+   product. Structurally {!check_req_resp_under_faults} minus [?vct] (the vct
+   dimension is deliberately out of scope this phase, k6-class - see the
+   .mli) and minus [list_select] (one list, all three guards live server-side
+   in the api_server write handlers, so no guard-home split arises): same
+   [~crash:true] seed with the crash DIMENSION selected by the caller's
+   budget, same pointwise lift ([fun f -> inv f.cs]), same {!violated_of},
+   same [default_depth], same [require_fault]/{!budget_fault_taken} gate - so
+   at P13's bound / depth and the four matrix budgets the product graphs are
+   the SAME ones P13 G1 / P14 G2 / P15 L1 / P16 L0-Lm explored and the phases
+   cross-check on [states] / [crash_witness_states] / [fault_free_states].
+
+   THE MASKING TRAP, inverted (BUILD-SPEC-P17 section 2-REVISED): unlike the
+   P14-P16 families these members ARE base-suite members (inv1-3), asserted
+   under fault budgets since P13 - but only ever inside the UNION of the full
+   [always]/VSTS suites, where an earlier-firing member could mask them. This
+   leg asserts the three ALONE with per-member [interesting] counts: the
+   first unmasked store-side measurement (the .mli carries the sweep-cited
+   narrow claim). A [violated] naming a non-S1/S2/S3 member here means the
+   lists were unioned somewhere: harness bug, not a finding. *)
+let check_objects_in_store_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
+  in
+  let invs = Objects_in_store.store_family ~controller_id in
   let inv = Invariants.conjunction invs in
   run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
     ~check:(fun reach ->
