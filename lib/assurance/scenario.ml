@@ -342,14 +342,23 @@ let vsts_cluster : Cluster.t =
    server-created CR. It satisfies every FAULT-FLAG conjunct of [Cluster.init],
    and that is the part P13 needs; the already-created CR rests on the same
    standing "a client created the CR first" argument every seed here rests on.
-   See scenario.mli for the isolating measurement. *)
-let vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey :
+   See scenario.mli for the isolating measurement.
+
+   [?vct] (P16, BUILD-SPEC-P16 section 4.3) threads to the {!vsts} CR builder:
+   [true] puts a volumeClaimTemplate on the seeded CR, which is what makes the
+   reconciler's PVC arm (and hence any [Get_request]) reachable. DEFAULT [false],
+   so every pre-P16 call produces a byte-identical seed and every committed pin
+   flows unchanged. The trailing [unit] is required for OCaml's optional-argument
+   erasure: every other parameter is labelled, and an optional followed only by
+   labels is unerasable (warning 16) - measured, not assumed; the spec's
+   leading-position alternative does not compile. *)
+let vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey ?(vct = false) () :
     Cluster.cluster_state =
   let created, _ =
     Api_server.handle_create_request vsts_installed
       {
         Api_method.namespace = "ns";
-        obj = V_stateful_set.marshal (vsts ~desired ());
+        obj = V_stateful_set.marshal (vsts ~desired ~vct ());
       }
       {
         Api_server.resources = Object_ref_map.empty;
@@ -379,7 +388,7 @@ let vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey :
    byte-identical to the pre-P13 body. *)
 let vsts_seed ~desired ~fair : Cluster.cluster_state =
   vsts_seed_faults ~desired ~crash:(not fair) ~req_drop:(not fair)
-    ~pod_monkey:(not fair)
+    ~pod_monkey:(not fair) ()
 
 (* The multi-CR analogue of [vsts_seed]: one VStatefulSet [vstsN] per element of
    [desireds] (distinct names "vsts1".."vstsN" => distinct [Object_ref_map] keys),

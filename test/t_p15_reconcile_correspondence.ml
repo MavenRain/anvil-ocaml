@@ -151,7 +151,7 @@ let r4 : Invariants.invariant =
 
 let seed : Cluster.cluster_state =
   Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-    ~pod_monkey:false
+    ~pod_monkey:false ()
 
 let reach_of ?(b : Bound.t = bound) ?(d : int = depth)
     ?(from : Cluster.cluster_state = seed) (budget : Fc.budget) :
@@ -859,7 +859,7 @@ let test_r1_desired_two_and_multi_cr () =
   let d2_bound = P15_witness.p15_bound ~desireds:[ P15_witness.desired_two ] in
   let d2_seed =
     Scenario.vsts_seed_faults ~desired:P15_witness.desired_two ~crash:true
-      ~req_drop:false ~pod_monkey:false
+      ~req_drop:false ~pod_monkey:false ()
   in
   let d2 = reach_of ~b:d2_bound ~from:d2_seed P15_witness.l1_budget in
   Alcotest.(check bool) "desired=2: frontier emptied" true
@@ -922,7 +922,7 @@ let test_r1_desired_two_and_multi_cr () =
 let test_l2x_drop_probe () =
   let l2x_seed =
     Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:true
-      ~pod_monkey:false
+      ~pod_monkey:false ()
   in
   let probe = reach_of ~from:l2x_seed P15_witness.l2_budget in
   let control = reach_of ~from:l2x_seed P15_witness.zero_budget in
@@ -1002,7 +1002,7 @@ let test_l2x_drop_probe () =
 let test_l3x_monkey_probe () =
   let l3x_seed =
     Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-      ~pod_monkey:true
+      ~pod_monkey:true ()
   in
   let probe = reach_of ~from:l3x_seed P15_witness.l3_budget in
   let control = reach_of ~from:l3x_seed P15_witness.zero_budget in

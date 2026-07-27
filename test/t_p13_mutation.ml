@@ -183,7 +183,7 @@ let m3_reach (crash : bool) : Fc.faulted Mc.reachable =
   explore_with
     (Fc.faulted_successors single_bound P13_witness.witness_budget cluster)
     (Scenario.vsts_seed_faults ~desired:P13_witness.witness_desired ~crash
-       ~req_drop:false ~pod_monkey:false)
+       ~req_drop:false ~pod_monkey:false ())
 
 let test_m3_crash_flag_load_bearing () =
   let off = m3_reach false in

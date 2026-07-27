@@ -135,7 +135,7 @@ let disabler_of (step : Step.t) : disabler =
 
 let seed_faults ~(crash : bool) ~(req_drop : bool) ~(pod_monkey : bool) :
     Cluster.cluster_state =
-  Scenario.vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey
+  Scenario.vsts_seed_faults ~desired ~crash ~req_drop ~pod_monkey ()
 
 (* The same state with an EMPTY etcd. [Api_server.init] (lib/cluster/api_server.ml:73,
    Anvil state_machine.rs:838) is exactly [resources] empty, so this isolates the

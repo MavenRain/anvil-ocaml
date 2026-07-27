@@ -313,7 +313,7 @@ let check_invariants_under_faults ?(depth = default_depth) (bound : Bound.t)
   let cluster = Scenario.vsts_cluster in
   let seed =
     Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-      ~pod_monkey:false
+      ~pod_monkey:false ()
   in
   let invs = Vsts_invariants.always ~cr ~controller_id in
   let inv = Invariants.conjunction invs in
@@ -366,7 +366,7 @@ let check_correspondence_under_faults ?(depth = default_depth) (bound : Bound.t)
   let cluster = Scenario.vsts_cluster in
   let seed =
     Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-      ~pod_monkey:false
+      ~pod_monkey:false ()
   in
   let invs = Correspondence.family cluster ~controller_id in
   let inv = Invariants.conjunction invs in
@@ -462,15 +462,22 @@ let vsts_none_states : Value.t -> bool =
    [steps = 6], one step BEFORE an rpc-id collision can form; a unioned leg
    would report N1 and never evaluate R3's exclusivity, masking the phase's
    headline. A [violated] naming a P14 member here means the lists were
-   unioned somewhere: harness bug, not a finding. *)
+   unioned somewhere: harness bug, not a finding.
+
+   [?req_drop] / [?pod_monkey] (P16, BUILD-SPEC-P16 section 4.5): purely
+   additive, defaults [false], so both shipped P15 legs are value-identical
+   and their pins stand. With a flag [true] at the seed AND a nonzero budget
+   cap in the matching dimension, the leg can now actually take a
+   [Step.Drop_req_step] / [Step.Pod_monkey_step] edge - discharging P15's
+   disclosed by-construction vacuity of its L2 / L3 dimensions (the flag
+   makes the edge EXIST, the budget makes it TAKEABLE). *)
 let check_reconcile_correspondence_under_faults ?(depth = default_depth)
-    (bound : Bound.t) (budget : budget) ~(desired : int)
-    ~(require_crash : bool) : fault_report =
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_crash : bool) : fault_report =
   let controller_id = Scenario.controller_id in
   let cluster = Scenario.vsts_cluster in
   let seed =
-    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-      ~pod_monkey:false
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
   in
   let invs =
     Reconcile_correspondence.family ~controller_id
@@ -487,6 +494,86 @@ let check_reconcile_correspondence_under_faults ?(depth = default_depth)
       Some
         (Model_check.count_states_where reach (fun (f : faulted) ->
              ((not require_crash) || f.crashes >= 1)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
+(* ---- G6 (BUILD-SPEC-P16 section 4.4): the request/response family ---- *)
+
+(* Which of the two P16 lists a leg asserts. A SUM, not a bool: the two lists
+   are asserted SEPARATELY and never unioned - with each other or with any
+   other shipped suite (the masking trap, see the .mli). *)
+type list_select = Rv_list | Matched_list
+
+(* "The leg's OWN fault counter reached 1", where "own" is read off the BUDGET:
+   a dimension counts only if the budget permits it at all ([cap >= 1]) and this
+   state has actually taken such an edge. At {!budget_crash_only} this is
+   [crashes >= 1] (P14/P15's [require_crash] meaning); at a drop-only or
+   monkey-only budget it is [drops >= 1] / [monkeys >= 1]; at [zero_budget]
+   the disjunction is empty and the gate is 0 BY CONSTRUCTION (the P14 lesson:
+   such a gate cannot serve as a fault-disabled non-vacuity floor - use
+   [require_fault:false] there). *)
+let budget_fault_taken (b : budget) (f : faulted) : bool =
+  (b.max_crashes >= 1 && f.crashes >= 1)
+  || (b.max_drops >= 1 && f.drops >= 1)
+  || (b.max_monkey_ops >= 1 && f.monkeys >= 1)
+
+(* G6. The P16 request/response correspondence lists
+   ({!Req_resp_correspondence.rv_family} = Q1-Q2, network + etcd guarded;
+   {!Req_resp_correspondence.matched_family} = Q3 + Q5, reconcile-coupled)
+   refuted by reachability over the fault product. Structurally
+   {!check_reconcile_correspondence_under_faults} with the asserted list
+   selected by [list_select]: same [~crash:true] seed (the crash DIMENSION is
+   still selected by the caller's budget), same pointwise lift
+   ([fun f -> inv f.cs]), same {!violated_of}, same [default_depth] - so at
+   P13's bound / depth / budget and [vct:false] the product graph is the SAME
+   one P13 G1 / P14 G2 / P15 L1 explored and the phases cross-check on
+   [states] / [crash_witness_states] / [fault_free_states].
+
+   Unlike every prior leg, the drop and monkey dimensions are REACHABLE here:
+   [?req_drop] / [?pod_monkey] thread to the seed flags (edge EXISTS) and the
+   budget caps make the edges TAKEABLE - the first legs in the repo that can
+   take a [Step.Drop_req_step] or [Step.Pod_monkey_step] at all
+   (BUILD-SPEC-P16 section 1). [?vct] threads to the seeded CR: [true] makes
+   the reconciler's PVC arm (hence [Get_request]s, hence OK get responses)
+   reachable, de-vacuifying Q1/Q2/Q3 (P16-E). Q2's bound-key closure is
+   instantiated with THIS leg's [bound], the coupling the family module
+   documents: passing a different bound would decouple the closure from the
+   explored graph.
+
+   [require_fault] generalises P14/P15's [require_crash]: [false] counts
+   states where SOME selected member's [interesting] fires (the non-vacuity
+   floor, intended at [zero_budget]); [true] additionally requires
+   {!budget_fault_taken} (the post-fault witness, whichever dimension the
+   budget permits). A drop leg with [max_drops_seen = 0] or a monkey leg with
+   [max_monkeys_seen = 0] is vacuous FOR ITS OWN DIMENSION and no verdict from
+   it may be reported (BUILD-SPEC-P16 section 3). *)
+let check_req_resp_under_faults ?(depth = default_depth) ?(req_drop = false)
+    ?(pod_monkey = false) ?(vct = false) (bound : Bound.t) (budget : budget)
+    ~(desired : int) ~(list_select : list_select) ~(require_fault : bool) :
+    fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ~vct
+      ()
+  in
+  let invs =
+    match list_select with
+    | Rv_list -> Req_resp_correspondence.rv_family bound
+    | Matched_list -> Req_resp_correspondence.matched_family ~controller_id
+  in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
@@ -559,7 +646,7 @@ let check_settles_after_disable ?(depth = default_depth) (bound : Bound.t)
   let cluster = Scenario.vsts_cluster in
   let seed =
     Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:true
-      ~pod_monkey:true
+      ~pod_monkey:true ()
   in
   let goal = Vsts_invariants.liveness_goal ~cr in
   let quiescent (f : faulted) : bool =

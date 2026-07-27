@@ -91,6 +91,8 @@ val vsts_seed_faults :
   crash:bool ->
   req_drop:bool ->
   pod_monkey:bool ->
+  ?vct:bool ->
+  unit ->
   Cluster.cluster_state
 (** {!vsts_seed} with the three disruptor toggles set INDEPENDENTLY: [crash] is
     the {!controller_id} entry's [crash_enabled] (Anvil's [RestartController]
@@ -141,7 +143,22 @@ val vsts_seed_faults :
     Soundness is unaffected: the already-created CR rests on the SAME standing
     argument every seed in this module rests on (a client created the CR before
     the reconcile starts, see {!seed}), and the flag prefix argument above covers
-    the fault dimension. *)
+    the fault dimension.
+
+    {b [?vct] (P16, BUILD-SPEC-P16 section 4.3).} Threads to the {!vsts} CR
+    builder: [~vct:true] seeds a CR carrying a volumeClaimTemplate, which is
+    what makes the VSTS reconciler's PVC arm - and hence any [Get_request] at
+    all - reachable (v_stateful_set_reconciler.ml:580, :603-611; the pod
+    create is NOT vct-gated). DEFAULT [false]: every pre-P16 call site
+    produces a BYTE-IDENTICAL seed value, so P13's 464/152/388/76, P14's
+    76/32 and 464/296 and P15's 76/64 and 464/304/388/76 pins all flow
+    through unchanged. A [~vct:true] seed is a DIFFERENT scenario and its
+    counts are NOT comparable with those pins (BUILD-SPEC-P16 section 8.6).
+    The trailing [unit] exists because OCaml cannot erase an optional
+    argument followed only by labelled ones (warning 16, measured): total
+    labelled application without a positional argument after [?vct] does not
+    default it, so the spec's alternative leading position does not
+    compile. *)
 
 val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
 (** Mirror of {!seed} for VSTS: the {!vsts} CR ([Scenario.vsts ~desired], default
@@ -153,7 +170,8 @@ val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
     disruptors gated by [fair] ([false] = full nondeterminism for safety; [true] =
     the fair suffix for ESR). Since P13 a thin delegation to
     [{!vsts_seed_faults} ~desired ~crash:(not fair) ~req_drop:(not fair)
-    ~pod_monkey:(not fair)], so behaviour is unchanged; see {!vsts_seed_faults}
+    ~pod_monkey:(not fair) ()] (default [?vct:false]), so behaviour is
+    unchanged; see {!vsts_seed_faults}
     for the reachability argument that licenses a [~fair:true] (all-disabled,
     hence non-{!Cluster.init}) seed. *)
 

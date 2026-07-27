@@ -198,7 +198,7 @@ let cr_key_b : Common.object_ref =
 
 let seed : Cluster.cluster_state =
   Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-    ~pod_monkey:false
+    ~pod_monkey:false ()
 
 (* An api GET request for [key], sent by controller [cid] AS the reconcile for
    [key] - [src = Controller (cid, key)], which is exactly what

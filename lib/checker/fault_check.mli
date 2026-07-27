@@ -511,6 +511,8 @@ val vsts_none_states : Value.t -> bool
 
 val check_reconcile_correspondence_under_faults :
   ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
   Bound.t ->
   budget ->
   desired:int ->
@@ -548,9 +550,9 @@ val check_reconcile_correspondence_under_faults :
     finding.
 
     {b Same product graph as P13 G1 / P14 G2, by construction.} Same seed
-    ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-    ~pod_monkey:false] - the crash DIMENSION is selected by the caller's
-    {!budget}, not by the seed, exactly as on
+    ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey
+    ()] with both P16 options defaulting [false] - the crash DIMENSION is
+    selected by the caller's {!budget}, not by the seed, exactly as on
     {!check_correspondence_under_faults}), same default depth, same
     {!faulted_successors} product construction. At
     ([P13_witness.p13_bound], [depth = 40], [desired = 1]) the reachable
@@ -656,19 +658,272 @@ val check_reconcile_correspondence_under_faults :
     of 3864 zero-budget states and 1856 of 10552 crash-only states - and is
     violated at ZERO reachable states.
 
-    {b DISCLOSED LIMITATION - budget variation alone cannot exercise the
-    drop / monkey dimensions at this leg.} The seed pins [~req_drop:false]
-    [~pod_monkey:false] and fault flags only flip [true -> false], so NO
-    budget can make this leg take a drop or monkey edge: BUILD-SPEC-P15
-    section 4.5's L2 / L3 dimensions are vacuous BY CONSTRUCTION here.
-    Their premise content was measured by supplementary direct-graph probes
-    with the flags enabled at the seed (drop-enabled: 744 states,
-    all-states gate 688, clean, decisive, drop edge really taken;
-    monkey-enabled: 1976 states, gate 1680, clean, decisive, monkey edge
-    really taken) - both premises measured-unnecessary-in-this-model for
-    R2/R3/R4, always with section 8.3's qualifier: a bounded
+    {b DISCLOSED LIMITATION (P15) - budget variation alone cannot exercise
+    the drop / monkey dimensions at this leg.} As shipped by P15 the seed
+    pinned [~req_drop:false] [~pod_monkey:false] and fault flags only flip
+    [true -> false], so NO budget could make this leg take a drop or monkey
+    edge: BUILD-SPEC-P15 section 4.5's L2 / L3 dimensions were vacuous BY
+    CONSTRUCTION here. Their premise content was measured by supplementary
+    direct-graph probes with the flags enabled at the seed (drop-enabled:
+    744 states, all-states gate 688, clean, decisive, drop edge really
+    taken; monkey-enabled: 1976 states, gate 1680, clean, decisive, monkey
+    edge really taken) - both premises measured-unnecessary-in-this-model
+    for R2/R3/R4, always with section 8.3's qualifier: a bounded
     single-scenario model failing to exhibit the excluded counterexample is
-    weak evidence about the model, not about upstream's premise. *)
+    weak evidence about the model, not about upstream's premise.
+
+    {b P16 DISCHARGE of that limitation (BUILD-SPEC-P16 section 4.5).}
+    [?req_drop] / [?pod_monkey] (defaults [false]) now thread to the seed
+    flags, purely additively: every existing call is value-identical, so
+    the L0/L1 pins above stand unchanged. With a flag [true] AND a nonzero
+    budget cap in the matching dimension, the L2 / L3 dimensions become
+    exercisable AT THIS LEG rather than only at the supplementary probes -
+    the flag makes the edge exist, the budget makes it takeable, and
+    [max_drops_seen] / [max_monkeys_seen] must be checked [>= 1] before
+    any verdict from such a leg is read (a zero means the leg was vacuous
+    for its own dimension).
+
+    {b MEASURED (P16) - the premise re-measure AT THE LEG}
+    ([t_p16_regression]'s p15_premise_releg group, run through THIS
+    function; both runs at [desired = 1], the P13 bound shape,
+    [depth = 40], [~require_crash:false], every expected count DERIVED
+    from the committed P15 probe pins, never re-typed):
+
+    - drop ([~req_drop:true], budget [{0; 1; 0}]): [No_counterexample],
+      [decisive = true], 744 states, [gate_states = Some 688],
+      [max_drops_seen = 1] (the first drop edge ever taken at THIS leg),
+      [fault_free_states = 152], [crash_witness_states = 0],
+      [violated = None].
+    - monkey ([~pod_monkey:true], budget [{0; 0; 1}]):
+      [No_counterexample], [decisive = true], 1976 states,
+      [gate_states = Some 1680], [max_monkeys_seen = 1],
+      [fault_free_states = 152], [crash_witness_states = 0],
+      [violated = None].
+
+    Both leg graphs are STATE-IDENTICAL to P15's supplementary L2x / L3x
+    probe graphs (same seed flags, bound, budget and depth), so the
+    supplementary-probe verdicts are now LEG verdicts: both premises
+    remain measured-unnecessary-in-this-model for R2/R3/R4, always with
+    section 8.3's qualifier - a bounded single-scenario model failing to
+    exhibit the excluded counterexample is weak evidence about the model,
+    not about upstream's premise. *)
+
+type list_select = Rv_list | Matched_list
+(** Which of the two P16 request/response lists
+    {!check_req_resp_under_faults} asserts: [Rv_list] selects
+    {!Req_resp_correspondence.rv_family} (Q1-Q2, guarded on network + etcd,
+    no reconcile read), [Matched_list] selects
+    {!Req_resp_correspondence.matched_family} (Q3 + Q5, reconcile-COUPLED
+    through [resp_msg_matches_req_msg]). A SUM, not a bool (BUILD-SPEC-P16
+    section 4.4): the selector's whole point is that the two lists are
+    asserted SEPARATELY, on separate legs, and never unioned - the split by
+    guard home IS the thesis under test. *)
+
+val check_req_resp_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  ?vct:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  list_select:list_select ->
+  require_fault:bool ->
+  fault_report
+(** {b G6} (BUILD-SPEC-P16 section 4.4): the request/response correspondence
+    family ({!Req_resp_correspondence}, [proof/req_resp.rs]) checked by
+    reachability over the fault product, one of its two lists at a time
+    ([list_select]).
+
+    {b What this leg is for.} P14 (network-guarded) and P15
+    (reconcile-guarded) settled the CRASH dimension of the thesis that fault
+    sensitivity is determined by WHERE a guard lives. This leg carries the
+    thesis onto the remaining two dimensions with the family whose members
+    are the first to open a response message's BODY and relate it to
+    [s.api_server]: it is the first leg in the repo that can take a
+    [Step.Drop_req_step] or [Step.Pod_monkey_step] at all (BUILD-SPEC-P16
+    section 1 - P13 built the drop / monkey budget machinery and no shipped
+    seed ever switched it on).
+
+    {b Seed and dimensions.} [Scenario.vsts_seed_faults ~desired ~crash:true
+    ~req_drop ~pod_monkey ~vct ()]: the crash flag stays ON and its
+    dimension is selected by the caller's {!budget}, exactly as on the
+    P14/P15 legs, so at [vct:false] and P13's bound / depth / budget the
+    product graph is the SAME one those phases pinned (76 fault-free at
+    [zero_budget]; 464 / 388 / 76 at {!budget_crash_only}) and the phases
+    cross-check. [?req_drop] / [?pod_monkey] (defaults [false]) enable the
+    other two dimensions: the seed flag makes the edge EXIST, the budget cap
+    makes it TAKEABLE. [?vct] (default [false]) seeds the CR with a
+    volumeClaimTemplate, making the reconciler's PVC arm - hence
+    [Get_request]s, hence OK get responses - reachable at all: predicted
+    (P16-E) to de-vacuify Q1/Q2/Q3, whose [interesting] is expected 0 under
+    [vct:false]. A [vct:true] leg is a DIFFERENT scenario whose counts are
+    NOT comparable with the P13/P14/P15 pins (BUILD-SPEC-P16 section 8.6).
+
+    {b The selected list is asserted ALONE (the masking trap, mandatory).}
+    Never union {!Req_resp_correspondence.rv_family} with
+    {!Req_resp_correspondence.matched_family}, and never union either with
+    {!Correspondence.family}, {!Reconcile_correspondence.family},
+    {!Invariants.always} or {!Vsts_invariants.always}. Under mutation MD
+    (the drop fabricator's [Create_request] arm returning [Ok]), Q5 is the
+    phase's intended witness; a unioned leg could report an earlier-firing
+    P14 member first and mask the headline, exactly as P14 measured N1
+    firing one step before an rpc-id collision can form under MA. A
+    [violated] naming ANY non-P16 member here is a harness bug, not a
+    finding (BUILD-SPEC-P16 section 4.4).
+
+    {b Q2's bound coupling.} [bound] both bounds the exploration AND
+    instantiates Q2's bound-key closure ({!Req_resp_correspondence.rv_family}
+    documents the coupling): the leg passes the SAME [bound] to both, and a
+    caller re-checking per-member [interesting] counts must do likewise or
+    the counts stop being evidence about this leg.
+
+    {b [require_fault] selects what [gate_states] counts,} generalising
+    P14/P15's [require_crash]: [~require_fault:false] counts states where
+    SOME selected member's [interesting] fires (the non-vacuity floor,
+    intended at [zero_budget]); [~require_fault:true] additionally requires
+    the leg's OWN fault counter [>= 1] - [crashes], [drops] or [monkeys]
+    according to which dimensions the budget permits ([cap >= 1]). At
+    [zero_budget] with [~require_fault:true] the gate is 0 by construction
+    (P14's [require_crash] lesson), so the floor leg must use [false].
+
+    {b Reading a verdict.} [No_counterexample {decisive = true}] is bounded
+    falsification up to ([depth], {!Bound.t}, {!budget}) on ONE VStatefulSet
+    scenario - never a proof, and on a drop or monkey leg a CLEAN verdict is
+    a NEGATIVE result and must be reported as one (BUILD-SPEC-P16 section
+    8.4). Before reading ANY verdict from a drop leg check
+    [max_drops_seen >= 1], and from a monkey leg [max_monkeys_seen >= 1]: a
+    zero means the leg never took its own dimension's edge and is vacuous
+    for it, the exact failure P15 disclosed and this phase exists to fix
+    (BUILD-SPEC-P16 section 3). A [Refuted] names the offending member
+    through [violated] ({!violated_of} over the selected two-member list).
+
+    {b MEASURED} (BUILD-SPEC-P16 section 4.6; all at [desired = 1], the
+    P13 bound shape unchanged through three phases, [depth = 40], each
+    list asserted ALONE; every number pinned once in [test/p16_witness.ml]
+    and asserted by [test/t_p16_req_resp.ml]; all fourteen runs
+    sub-second):
+
+    - L0 ([zero_budget], [~require_fault:false], [vct:false]): BOTH lists
+      [No_counterexample], [decisive = true], 76 states - exactly P14 G1 /
+      P15 L0's fault-free graph, the mandatory no-seed-drift cross-check -
+      [gate_states = Some 0] on [Rv_list] and [Some 4] on [Matched_list],
+      both pruning flags [true]. Per-member [interesting]: Q1 0, Q2 0,
+      Q3 0, Q5 4.
+    - Lc ({!budget_crash_only}, [~require_fault:true]): both lists clean
+      and decisive over the EXACT P13 G1 product graph (464 / 388 / 76,
+      [max_crashes_seen = 1]); gates [Some 0] (Rv) / [Some 32] (Matched).
+      Q5 [interesting] 36 all-states / 32 post-crash; Q1/Q2/Q3 0.
+    - Ld ([~req_drop:true], budget [{0; 1; 0}], [~require_fault:true]):
+      both lists clean and decisive with [max_drops_seen = 1] - THE FIRST
+      DROP EDGE EVER TAKEN IN A DECISIVE LEG in this repo. 744 states
+      (= P15's supplementary L2x probe graph), [fault_free_states = 152]
+      (the enabled flag adds the [Disable_req_drop_step] dimension to the
+      zero-counter slice, doubling L0's 76 - NOT seed drift), gates
+      [Some 0] (Rv) / [Some 16] (Matched); Q5 24 all-states / 16
+      post-drop; Q1/Q2/Q3 0. THE KNIFE-EDGE MEASURED DIRECTLY (P16-C's
+      mechanism): 384 of the 744 states hold a fabricated Error-bodied
+      response satisfying [Message.resp_msg_matches_req_msg] against an
+      ongoing reconcile's pending request - every one of the 384 in the
+      [drops >= 1] slice, 0 of 76 on L0 - so the matching premise IS
+      reached and ONLY the [is_ok] conjunct keeps Q3/Q5's antecedents
+      false, precisely as section 3 predicted.
+    - Lm ([~pod_monkey:true], budget [{0; 0; 1}], [~require_fault:true]):
+      both lists clean and decisive with [max_monkeys_seen = 1] - the
+      first monkey edge in a decisive leg. 1976 states (= P15's L3x probe
+      graph), [fault_free_states = 152] (same doubling), gates [Some 0]
+      (Rv) / [Some 80] (Matched); Q5 88 all-states / 80 post-monkey;
+      Q1/Q2/Q3 0. The second-writer mechanism is VISIBLE:
+      [max_uid_seen = max_rv_seen = 4] against 3 / 2 on L0 / Lc / Ld - a
+      real [Api_server_step] applied the monkey's injected create, the
+      transitive etcd write P16-D requires.
+    - L0v / Ldv ([~vct:true]; a DIFFERENT scenario, counts NOT comparable
+      with any committed P13/P14/P15 pin, section 8.6): both clean and
+      decisive; 116 / 1832 states; gates (Rv / Matched) [Some 4] /
+      [Some 12] and [Some 16] / [Some 96]; Ldv [max_drops_seen = 1],
+      [fault_free_states = 232]. Per-member [interesting]: L0v Q1/Q2/Q3 4
+      each, Q5 8; Ldv 24 each, Q5 96 (post-drop 16 each, Q5 80).
+      Knife-edge on Ldv: 720 states - 712 post-drop, 8 fault-free.
+    - Lcv (SUPPLEMENTARY crash-x-vct probe: {!budget_crash_only},
+      [~vct:true], [~require_fault:true]), run ONLY so P16-A could be
+      judged non-vacuously; NOT a section-4.6 matrix leg and not pinned as
+      one: clean, decisive, 1136 states (1020 post-crash; 116 fault-free
+      = L0v's graph, the slice identity), gates [Some 56] (Rv) /
+      [Some 132] (Matched); Q1 60 (56 post-crash), Q2 60 (56 post-crash),
+      Q3 28, Q5 116.
+
+    {b Prediction verdicts (section 3), stated plainly.} Every clean drop
+    or monkey verdict here is a NEGATIVE result (section 8.4): the phase's
+    positive content is the third guard class, the first drop and monkey
+    edges taken in decisive legs, and the section-6 mutations - not the
+    cleanliness itself.
+
+    - {b P16-A CONFIRMED}: the crash edge perturbs neither [network] nor
+      [api_server] where Q1/Q2 genuinely fire. At [vct:false] Lc's rv
+      content is VACUOUS ([interesting] 0, exactly P16-E), so the
+      non-vacuous judgment rests on the supplementary Lcv probe: clean
+      over 56 post-crash Q1-firing and 56 post-crash Q2-firing states,
+      zero holds-violations. Gate and slice counts moved only with
+      reachable-set growth (76 -> 464 / 116 -> 1136).
+    - {b P16-B CONFIRMED, with one sub-clause measured AGAINST as
+      worded}: Q3/Q5 vacuate PER CRASH INSTANT (the crash empties
+      [ongoing_reconciles]; the firing states are post-restart), NOT as an
+      aggregate collapse of the post-crash gate - the gate is 32 > 0 and
+      DENSER post-crash than fault-free (32/388 vs 4/76), the same
+      re-arming signature P15's own pinned L1 shows (post-crash R2-R4
+      [interesting] 148-156 > 0 against gate 304).
+    - {b P16-C, leg half CONFIRMED} (the Ld knife-edge above; Ldv shows
+      the same shape at [vct:true] with 712 post-drop knife-edge states).
+      The other half - mutation MD flipping Ld to [Refuted] naming Q5 -
+      is the mutation stage's to measure, not judged here.
+    - {b P16-D, leg half CONFIRMED} (the second-writer mechanism under
+      Lm). MATRIX GAP, disclosed rather than smoothed: Q2's [interesting]
+      is 0 on Lm at [vct:false], so the predicted "MS refutes Q2 on Lm
+      and ONLY on Lm" cannot fire through Q2's premise on the matrix's
+      own Lm - the mutation stage needs a [vct:true] monkey probe (Lmv)
+      or a re-reading of where MS's witness can live. RESOLVED by the
+      mutation stage: MS was run against exactly that Lmv probe (where
+      Q2 fires under a real monkey edge) and measured INERT - the
+      plain-update write path it mutates is DEAD CODE on every shipped
+      graph, the SAME structural fact as Q4's exclusion (no shipped
+      reconciler issues a plain [Update_request]; the monkey's candidate
+      pods are the stored pods themselves, so its plain updates merge to
+      no-ops before the stamping site). {b Scope of the witness, stated
+      precisely:} [t_p16_regression]'s Q4 structural-vacuity pin observes
+      only the PRODUCER conjunct of that diagnosis (the monkey is the sole
+      plain-update source, and no controller ever issues one). The second
+      conjunct - that the monkey's plain updates merge to [updated = old]
+      and take the no-op branch BEFORE the stamping site (cluster.ml:748-755,
+      api_server.ml:488-495) - is diagnosis only and is observed by NO
+      staged test; indeed the pin establishes that monkey plain updates DO
+      reach the api server, so MS's site is dead solely via that unmeasured
+      equality branch, and a monkey that perturbed the pod would take the
+      site live while the pin stayed green ([t_p16_mutation]'s MS header
+      carries the full diagnosis). If the pin ever reddens, BOTH the Q4
+      exclusion and MS's inertness must be revisited together.
+    - {b P16-E CONFIRMED, measured not argued}: Q1/Q2/Q3 [interesting]
+      = 0 on EVERY [vct:false] graph (76 / 464 / 744 / 1976 states) and
+      > 0 on EVERY [vct:true] graph (L0v 4/4/4, Ldv 24/24/24, Lcv
+      60/60/28); Q5 is the sole non-vacuous member at [vct:false]
+      (4 / 36 / 24 / 88) and stays non-vacuous at [vct:true]
+      (8 / 96 / 116). Consequence for reading this leg: a clean
+      [Rv_list] verdict at [vct:false] is CONTENT-VACUOUS
+      ([gate_states = Some 0]) and is pinned as vacuity, never as a pass.
+
+    {b MD's converse-control caveat} (measured here, binding on the
+    mutation stage): real, NON-fabricated Error responses matching a
+    pending request exist WITHOUT any drop edge - knife-edge counts 4 on
+    Lc (post-crash create-conflict replay), 24 on Lm, 4 on fault-free
+    L0v, 8 in Ldv's fault-free slice - so "error response matching
+    pending" must never be equated with "drop edge taken"; only the
+    [drops >= 1] slice (384 of 384 on Ld) is drop-attributable.
+
+    {b Section 5 re-measured on Lm specifically, not inherited}: a monkey
+    edge injects a message without consuming one, yet the largest
+    [Message.Pool.cardinal] anywhere is 2 (Lc / Lm / Lcv graphs; 1 on
+    L0 / Ld / L0v / Ldv) against the ceiling 8, [max_rv_seen] peaks at 4
+    against [rv_ceiling] 6 and [max_uid_seen] at 4 against [uid_ceiling]
+    6. The predicted monkey orphan-inflation did not bind; no retune. *)
 
 val check_unique_reconcile_id_under_faults :
   ?depth:int -> Bound.t -> budget -> desireds:int list -> fault_report

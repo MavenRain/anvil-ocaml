@@ -132,7 +132,7 @@ let inv_name (i : Invariants.invariant option) : string =
 
 let seed : Cluster.cluster_state =
   Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
-    ~pod_monkey:false
+    ~pod_monkey:false ()
 
 let reach_of (budget : Fc.budget) : Fc.faulted Mc.reachable =
   Mc.explore ~depth
