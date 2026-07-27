@@ -455,6 +455,221 @@ val check_correspondence_under_faults :
     [crash_witness_states = 76]. Together these close P13's negative result: the
     allocator-reset mutation that refuted nothing there is refuted here. *)
 
+val vsts_pending_states : Value.t -> bool
+(** The R2 instantiation {!check_reconcile_correspondence_under_faults} bakes
+    in, DERIVED from the VStatefulSet reconciler's step encoding rather than
+    invented (BUILD-SPEC-P15 section 4.3): [true] iff the erased local state
+    decodes ([V_stateful_set_pack.unmarshal_state]) and its step is one of
+    the seven [After_*] constructors. Those are exactly the states
+    [V_stateful_set_reconciler.reconcile_core] lands in TOGETHER WITH a
+    [Some] request (v_stateful_set_reconciler.ml:533, :590, :622, :654,
+    :707, :743, :786 - the action / [After_*] alternation), so this is
+    upstream's pending-request state class for the reconciler the leg's
+    scenario actually runs ({!Scenario.vsts_cluster}'s registered model). A
+    local state that fails to decode fires NO guard: R2 is vacuous there,
+    never refuted (or validated) by a codec mismatch, so this predicate and
+    {!vsts_none_states} are complements over DECODABLE states only.
+
+    Exported deliberately (the {!violated_of} precedent above): the
+    side-condition validation and the per-member gate measurements must run
+    against THE SAME predicate the leg asserts, not a re-implementation in
+    the test that could drift from it.
+
+    {b MEASURED - the side-condition verdict, reported before any R2 verdict
+    is read} (an upstream theorem only under that side condition):
+    {!Reconcile_correspondence.state_comes_with_a_pending_request} HOLDS for
+    this predicate over the reachable continue-transition triples of BOTH
+    shipped legs ([zero_budget] and {!budget_crash_only}), and NON-vacuously:
+    the init conjunct genuinely discriminates
+    ([vsts_pending_states (init ())] is [false]) and the pending landing
+    class is populated on both graphs - 24 of 60 triples fault-free, 126 of
+    348 crash-enabled, with the two landing classes partitioning each triple
+    set exactly. So R2 was measured at a VALIDATED instantiation;
+    BUILD-SPEC-P15 section 4.3's "no non-vacuous instantiation exists"
+    branch was not taken. *)
+
+val vsts_none_states : Value.t -> bool
+(** The R4 instantiation {!check_reconcile_correspondence_under_faults} bakes
+    in - the dual of {!vsts_pending_states}: [true] iff the erased local
+    state decodes and its step is NOT an [After_*] constructor. Derived from
+    the same landing-site reading: every [reconcile_core] transition landing
+    in a non-[After_*] step returns [None] for the request, and [Init] -
+    included here - is never a landing state at all ([reconcile_init_state]
+    only) and carries no pending request at insert, so the R4 side
+    condition's transition conjunct holds for it vacuously. Same
+    decode-failure behaviour and the same deliberate-export rationale as
+    {!vsts_pending_states}.
+
+    {b MEASURED - the dual side-condition verdict} (upstream proves R4 only
+    under it, controller_runtime_safety.rs:507):
+    {!Reconcile_correspondence.state_comes_with_no_pending_request} HOLDS
+    for this predicate over BOTH shipped legs' reachable continue-transition
+    triples, NON-vacuously: 36 of 60 fault-free triples and 222 of 348
+    crash-enabled triples land in none states (no init conjunct to
+    discriminate - upstream's own asymmetry). R4, like R2, was therefore
+    measured at a validated instantiation. *)
+
+val check_reconcile_correspondence_under_faults :
+  ?depth:int ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_crash:bool ->
+  fault_report
+(** {b G5} (BUILD-SPEC-P15 section 4.4): the RECONCILE-SIDE correspondence
+    family ({!Reconcile_correspondence.family} = R1-R4) checked by
+    reachability over the fault product.
+
+    {b What this leg is for.} Every P14 member is guarded on the NETWORK side
+    ([in_flight().contains(msg)]); every member here is guarded on the
+    ONGOING-RECONCILE side. [restart_controller] (cluster.ml:291-324) empties
+    [ongoing_reconciles] and leaves [s.network] and [s.rpc_id_allocator]
+    untouched, so the crash edge DESTROYS every guard in this family while
+    PRESERVING every guard in P14's. This leg is the experiment that turns
+    that asymmetry into a measurement. Prediction P15-A (BUILD-SPEC-P15
+    section 3): the UNMUTATED crash edge refutes nothing here - at the crash
+    instant all four members are vacuously true, and the fresh post-restart
+    reconcile draws a fresh rpc id - so the crash's only visible effect
+    should be on the GATE counts. That is a prediction of a NEGATIVE result;
+    it must be recorded as measured or refuted, never quietly dropped, and if
+    it holds the phase's positive content is the structural claim
+    ("crash sensitivity is determined by where a guard lives, not by what the
+    invariant says") plus mutation MA - not a new refutation.
+
+    {b The family is asserted ALONE (the section-3 masking trap).} Never
+    unioned with {!Correspondence.family}, {!Invariants.always} or
+    {!Vsts_invariants.always}. Under mutation MA (restart also resets the
+    rpc-id allocator) P14 MEASURED N1 firing at [steps = 6], one step BEFORE
+    an rpc-id collision can form: a combined leg would report N1 and never
+    evaluate R3's exclusivity, masking this phase's headline behind an
+    earlier-firing member. If a run here ever reports [violated] naming a P14
+    member ([every_in_flight_msg_has_lower_id_than_allocator] or any other),
+    the family lists were unioned somewhere: that is a harness bug, not a
+    finding.
+
+    {b Same product graph as P13 G1 / P14 G2, by construction.} Same seed
+    ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
+    ~pod_monkey:false] - the crash DIMENSION is selected by the caller's
+    {!budget}, not by the seed, exactly as on
+    {!check_correspondence_under_faults}), same default depth, same
+    {!faulted_successors} product construction. At
+    ([P13_witness.p13_bound], [depth = 40], [desired = 1]) the reachable
+    product set is therefore the SAME graph those phases explored and pinned
+    - 76 states fault-free at [zero_budget]; 464 / 388 / 76 for [states] /
+    [crash_witness_states] / [fault_free_states] at {!budget_crash_only} -
+    so the three phases cross-check on those counts and ONLY the asserted
+    invariant list differs. A P15 leg whose [states] count differs from
+    P14's at the same budget means the seed or bound drifted: investigate
+    before reporting anything (BUILD-SPEC-P15 section 4.4).
+
+    {b The R2/R4 instantiation is baked in and DERIVED, not invented:}
+    {!vsts_pending_states} / {!vsts_none_states} (see their blocks for the
+    derivation and the side-condition duty). The leg's signature carries no
+    instantiation parameter deliberately - a caller-supplied predicate would
+    reintroduce the invented-instantiation hazard BUILD-SPEC-P15 section 4.3
+    exists to exclude, and would decouple the measured leg from the validated
+    predicates.
+
+    {b [require_crash] selects what [gate_states] counts,} P14's meaning
+    kept: [~require_crash:false] counts states where SOME member's
+    [interesting] fires (the pre-crash exercise floor, intended at
+    [zero_budget]); [~require_crash:true] additionally requires
+    [crashes >= 1] (the post-crash witness, intended at
+    {!budget_crash_only}). Per-member expectations (BUILD-SPEC-P15 section
+    4.2), each justified not guessed: R1 needs at least TWO ongoing
+    reconciles both holding [Some] pending requests, so its [interesting] is
+    expected STRUCTURALLY 0 at [desired = 1] (one CR, one key: the inner
+    quantifier ranges over nothing) - the [desired = 2] / multi-key seed and
+    the binding-ceiling sweep proving that zero is not a bound artifact
+    (P14's N5 protocol) are the measurement stage's duty; R2/R4 fire at
+    states whose local step satisfies their own instantiation; R3 fires at
+    any ongoing reconcile with a full [has_pending_req_msg] (content
+    conjunct included).
+
+    {b Reading a verdict.} R3 is asserted after EVERY step, which is
+    STRONGER than upstream's [leads_to(always(..))] proof
+    (controller_runtime_safety.rs:422): a refutation near the seed may be
+    the leads-to shape appearing empirically and MUST NOT be reported as a
+    port defect without inspecting the counterexample lasso
+    ({!Reconcile_correspondence} header; BUILD-SPEC-P15 sections 2 and 8).
+    [No_counterexample {decisive = true}] is bounded falsification up to
+    ([depth], {!Bound.t}, {!budget}) on ONE VSTS scenario - and under a
+    nonzero budget it is evidence about THIS bounded model only, never
+    absolution for upstream's fault-disabled premises (:414-:416): the
+    section-4.5 premise matrix consumes this function at varying budgets,
+    and a clean leg whose fault counter never reached 1 measures NOTHING
+    and must be reported as vacuous. A [Refuted] names the offending member
+    through [violated] ({!violated_of} over the four-member family).
+
+    {b MEASURED} (all at [desired = 1], [P13_witness.p13_bound],
+    [depth = 40]; pinned once in [test/p15_witness.ml]; L0/L1 are the
+    section-4.5 matrix's names for the two shipped legs):
+
+    - L0 ([zero_budget], [~require_crash:false]): [No_counterexample],
+      [decisive = true], 76 states, [gate_states = Some 64],
+      [crash_witness_states = 0], [fault_free_states = 76],
+      [max_uid_seen = 3], [max_rv_seen = 2], [max_crashes_seen = 0], both
+      pruning flags [true]. 0.013 s CPU. Per-member [interesting]: R1 0
+      (structurally vacuous at [desired = 1] - see below), R2 32, R3 32,
+      R4 32.
+    - L1 ({!budget_crash_only}, [~require_crash:true]): [No_counterexample],
+      [decisive = true], 464 states, [gate_states = Some 304] (368 on the
+      all-states union, recomputed over the replica),
+      [crash_witness_states = 388], [fault_free_states = 76],
+      [max_crashes_seen = 1], both pruning flags [true]. 0.077 s CPU. The
+      464 / 388 / 76 triple is the EXACT product graph P14's G2 and P13's
+      G1 committed (same seed, bound and budget), so the three phases
+      cross-check on those counts; only the asserted family differs.
+      Per-member [interesting], all-states / post-crash: R1 0 / 0,
+      R2 180 / 148, R3 180 / 148, R4 188 / 156.
+    - {b PREDICTION P15-A CONFIRMED} - a measured NEGATIVE result, recorded
+      per BUILD-SPEC-P15 section 8.5: the unmutated crash edge refutes
+      NOTHING in this family; its only visible effect is on the gate counts
+      (64 -> 304 post-crash).
+    - Side-condition verdicts: BOTH HOLD, non-vacuously, over both legs'
+      reachable triples - the measured counts live in the
+      {!vsts_pending_states} / {!vsts_none_states} blocks above.
+    - [max_in_flight] re-measured, per section 5, not inherited: the
+      ceiling 8 NEVER binds (largest [Message.Pool.cardinal] is 1 on L0's
+      graph, 2 on L1's, and 3 even with all three fault dimensions live);
+      [pruned_by_ceiling = true] on every leg is [reconcile_ceiling = 2]
+      biting, not the pool cap. P14's non-retune re-confirmed: no retune.
+
+    {b MEASURED crash-sensitivity (mutation MA).} Mutating
+    [restart_controller] to ALSO reset [s.rpc_id_allocator] (manual source
+    mutation) flips L1 from clean to [Refuted] naming R3 through [violated]
+    ([pending_req_in_flight_xor_resp_in_flight_if_has_pending_req_msg]),
+    while L0 stays byte-identical - the control proving the refutation is
+    attributable to the crash edge. The converse mutant M1 (restart KEEPS
+    [ongoing_reconciles]) refutes NOTHING: the L1 graph merely shrinks
+    464 -> 152, P14's exact measured shrink.
+
+    {b MEASURED - R1's zero is STRUCTURAL at [desired = 1], not a bound
+    artifact} (P14's N5 protocol, run on the BINDING ceiling): the
+    [reconcile_ceiling] sweep 2 / 3 / 4 / 6 gives 76 / 112 / 148 / 220
+    zero-budget states and 464 / 984 crash-only at 2 / 3, and EVERY point
+    keeps R1's [interesting] at 0 with the per-state maximum of
+    concurrently-pending ongoing reconciles at 1. Mechanism:
+    [ongoing_reconciles] is keyed by [object_ref], so a single-CR seed can
+    never hold two ongoing reconciles at any ceiling. On P12's multi-CR
+    [1; 1] seed R1 IS non-vacuously exercised - [interesting] fires at 928
+    of 3864 zero-budget states and 1856 of 10552 crash-only states - and is
+    violated at ZERO reachable states.
+
+    {b DISCLOSED LIMITATION - budget variation alone cannot exercise the
+    drop / monkey dimensions at this leg.} The seed pins [~req_drop:false]
+    [~pod_monkey:false] and fault flags only flip [true -> false], so NO
+    budget can make this leg take a drop or monkey edge: BUILD-SPEC-P15
+    section 4.5's L2 / L3 dimensions are vacuous BY CONSTRUCTION here.
+    Their premise content was measured by supplementary direct-graph probes
+    with the flags enabled at the seed (drop-enabled: 744 states,
+    all-states gate 688, clean, decisive, drop edge really taken;
+    monkey-enabled: 1976 states, gate 1680, clean, decisive, monkey edge
+    really taken) - both premises measured-unnecessary-in-this-model for
+    R2/R3/R4, always with section 8.3's qualifier: a bounded
+    single-scenario model failing to exhibit the excluded counterexample is
+    weak evidence about the model, not about upstream's premise. *)
+
 val check_unique_reconcile_id_under_faults :
   ?depth:int -> Bound.t -> budget -> desireds:int list -> fault_report
 (** {b G2} (BUILD-SPEC-P13 section 4.4): P12's concurrent-reconcile uniqueness

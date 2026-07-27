@@ -384,6 +384,113 @@ let check_correspondence_under_faults ?(depth = default_depth) (bound : Bound.t)
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
 
+(* ---- G5 (BUILD-SPEC-P15 section 4.4): the reconcile-side family ---- *)
+
+(* The step classes of [V_stateful_set_reconciler.reconcile_core]'s landing
+   sites, DERIVED from the reconciler's own step encoding rather than invented
+   (BUILD-SPEC-P15 section 4.3; {!Scenario.vsts_cluster}'s registered model is
+   the VStatefulSet pack, so ITS encoding is the one the leg's graph runs).
+   The step machine alternates ACTION steps (emit exactly one request, land in
+   their matching [After_*] step) with [After_*] handler steps (consume the
+   response, land in the next action step with no request): every landing in
+   one of the seven [After_*] constructors is paired with [Some] request
+   (v_stateful_set_reconciler.ml:533, :590, :622, :654, :707, :743, :786),
+   every landing in any other constructor with [None], and [Init] is never a
+   landing state at all ([reconcile_init_state] only). So "the step is an
+   [After_*]" is exactly upstream's pending-request state class for this
+   reconciler, and its decodable complement exactly the no-pending class.
+   Exhaustive on the 17-arm sum, no wildcard: an 18th step is a compile error
+   here, not a silently misclassified instantiation. *)
+let vsts_step_expects_pending (st : V_stateful_set_reconciler.step) : bool =
+  match st with
+  | V_stateful_set_reconciler.After_list_pod
+  | V_stateful_set_reconciler.After_get_pvc
+  | V_stateful_set_reconciler.After_create_pvc
+  | V_stateful_set_reconciler.After_create_needed
+  | V_stateful_set_reconciler.After_update_needed
+  | V_stateful_set_reconciler.After_delete_condemned
+  | V_stateful_set_reconciler.After_delete_outdated ->
+      true
+  | V_stateful_set_reconciler.Init
+  | V_stateful_set_reconciler.Get_pvc
+  | V_stateful_set_reconciler.Create_pvc
+  | V_stateful_set_reconciler.Skip_pvc
+  | V_stateful_set_reconciler.Create_needed
+  | V_stateful_set_reconciler.Update_needed
+  | V_stateful_set_reconciler.Delete_condemned
+  | V_stateful_set_reconciler.Delete_outdated
+  | V_stateful_set_reconciler.Done
+  | V_stateful_set_reconciler.Error ->
+      false
+
+(* An erased local state that fails to decode fires NEITHER predicate: it is
+   not evidence about the step machine, so R2/R4 stay vacuous there rather
+   than being refuted (or validated) by a codec mismatch. The two predicates
+   are therefore complements over DECODABLE states only, not over all of
+   [Value.t]. No two-arm result match: stdlib [Result.fold]. *)
+let vsts_decode_step (f : V_stateful_set_reconciler.step -> bool)
+    (v : Value.t) : bool =
+  Result.fold
+    ~error:(fun (_ : Err.t) -> false)
+    ~ok:(fun (st : V_stateful_set_reconciler.s) -> f st.reconcile_step)
+    (V_stateful_set_pack.unmarshal_state v)
+
+let vsts_pending_states : Value.t -> bool =
+  vsts_decode_step vsts_step_expects_pending
+
+let vsts_none_states : Value.t -> bool =
+  vsts_decode_step (fun (step : V_stateful_set_reconciler.step) ->
+      not (vsts_step_expects_pending step))
+
+(* G5. The RECONCILE-SIDE correspondence family
+   ({!Reconcile_correspondence.family} = R1-R4, every guard on the
+   ongoing-reconcile side where every P14 member's is on the network side)
+   refuted by reachability over the fault product. Structurally
+   {!check_correspondence_under_faults} with a different invariant list: same
+   seed construction, same pointwise lift ([fun f -> inv f.cs]), same
+   [require_crash] gate selector and the same [default_depth] - so at P13's
+   bound / depth / budget the product graph is the SAME one P13 G1 and P14 G2
+   explored, the three phases cross-check on [states] /
+   [crash_witness_states] / [fault_free_states], and ONLY the asserted family
+   differs. A [states] count that disagrees with P14's at the same budget
+   means the seed or bound drifted: investigate before reporting anything
+   (BUILD-SPEC-P15 section 4.4).
+
+   THE MASKING TRAP (BUILD-SPEC-P15 section 3): the family is asserted ALONE,
+   never unioned with {!Correspondence.family}, {!Invariants.always} or
+   {!Vsts_invariants.always}. Under mutation MA, P14 measured N1 firing at
+   [steps = 6], one step BEFORE an rpc-id collision can form; a unioned leg
+   would report N1 and never evaluate R3's exclusivity, masking the phase's
+   headline. A [violated] naming a P14 member here means the lists were
+   unioned somewhere: harness bug, not a finding. *)
+let check_reconcile_correspondence_under_faults ?(depth = default_depth)
+    (bound : Bound.t) (budget : budget) ~(desired : int)
+    ~(require_crash : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop:false
+      ~pod_monkey:false
+  in
+  let invs =
+    Reconcile_correspondence.family ~controller_id
+      ~pending_states:vsts_pending_states ~none_states:vsts_none_states
+  in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_crash) || f.crashes >= 1)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
 (* G2. P12's uniqueness gate, strengthened into the crash dimension: the SAME
    {!Invariants.unique_reconcile_id_invariant}, the SAME
    [cardinal(ongoing) >= 2] non-vacuity notion (inv6's own [interesting]), but
