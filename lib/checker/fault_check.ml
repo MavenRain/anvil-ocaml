@@ -774,3 +774,52 @@ let check_settles_after_disable ?(depth = default_depth) (bound : Bound.t)
       | Model_check.Refuted _ -> Some goal
       | Model_check.No_counterexample _ -> None)
     ~gate:(fun reach -> Some (Model_check.count_states_where reach quiescent))
+
+(* ---- P19 (BUILD-SPEC-P19 section 4): the message-provenance family ---- *)
+
+(* P19. The message-provenance family ({!Msg_provenance.provenance_family} =
+   M1-M4: the vsts controller tag member helper_invariants.rs:1213 plus the
+   three cluster sender classifiers of kubernetes_cluster/proof/network.rs
+   :570/:618/:540) asserted ALONE by reachability over the fault product. A
+   clone of the P18 H-leg shape ({!check_helper_invariants_under_faults}
+   above: same [~crash:true] seed with the crash DIMENSION selected by the
+   caller's budget, same pointwise lift [fun f -> inv f.cs], same
+   {!violated_of}, same [default_depth], same
+   [require_fault]/{!budget_fault_taken} gate) with ONE disclosed deviation:
+   NO [?vct] - G7's k6-class cut returns (the G7 header documents the
+   pattern), with the stronger justification that no P19 member's premise
+   reads PVCs or volumes at all (every member quantifies over
+   [Message.Pool.distinct (Cluster.in_flight s)] only), so the vct dimension
+   buys no de-vacuation and adds no rows here. Seed
+   [Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()]
+   exactly as G7. Graph identity: at P13's bound / depth 40 and the four
+   matrix budgets (L0 zero / Lc crash / Ld drop / Lm monkey) the product
+   graphs are the SAME 76 / 464 / 744 / 1976 ones P13-P18 pinned - the graph
+   depends only on (seed, bound, budget, depth), never on the invariant
+   list. M3's non-vacuity floor is NOT here: no vsts-spine graph fires the
+   builtin (BUILD-SPEC-P19 section 5 prediction 3), so its floor lives in
+   the ORPHAN REPLICA owned by t_p19_provenance (spec section 4), a
+   test-level replica over the generic spine, not a leg of this function. *)
+let check_msg_provenance_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
+  in
+  let invs = Msg_provenance.provenance_family ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))

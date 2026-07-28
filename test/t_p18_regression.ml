@@ -38,13 +38,15 @@
      states): owner-ref-carrying pairs 0, CONTROL total stored-PVC pairs
      80 (the detector looked at real PVCs).
 
-   - THE E6 REGISTER GUARD (spec section 3): the message-guarantee
-     register is occupied by shipped [inv_self] (widened inv9); the
-     upstream :1213 name must equal NO shipped member name, so a future
-     port of the message sibling cannot silently collide (reversal
-     clause: a natural P19 candidate). The guard carries a POSITIVE
-     control - the same detector SEEN finding a shipped name (h1_name,
-     exactly one hit) - so the absence pin cannot pass vacuously.
+   - THE E6 REGISTER GUARD, RE-SCOPED (spec section 3; re-scope executed
+     per BUILD-SPEC-P19 section 6): the PAYLOAD register stays shipped
+     [inv_self]'s (widened inv9), and the upstream :1213 name - once
+     required to equal NO shipped member name, under an explicit reversal
+     clause ("until a deliberate P19 port claims it") - is now shipped by
+     EXACTLY [Msg_provenance.provenance_family] and by no other suite, so
+     the tag register cannot silently collide either. The guard keeps its
+     POSITIVE control - the same detector SEEN finding a shipped name
+     (h1_name, exactly one hit) - so neither pin can pass vacuously.
 
    ---- what it does NOT do (anti-duplication, the P15-P17 rationale) --------
 
@@ -216,9 +218,13 @@ let test_family_is_disjoint_from_shipped_suites () =
     "no P18 helper member shares a name or source with a shipped suite" []
     leaked
 
-(* THE E6 REGISTER GUARD: upstream :1213's name equals NO shipped member
-   name (and neither P18 name), keeping the message-guarantee register
-   unambiguously [inv_self]'s until a deliberate P19 port claims it. *)
+(* THE E6 REGISTER GUARD, RE-SCOPED: the :1213 register is now CLAIMED by
+   [Msg_provenance.provenance_family] - the deliberate port this guard's
+   original text pre-authorized ("until a deliberate P19 port claims it");
+   claimed by P19 as specified at BUILD-SPEC-P18.md:220-221, executed per
+   BUILD-SPEC-P19.md section 6. The guard now pins the claim EXACTLY: the
+   name is shipped by the P19 family and by NO other suite - [inv_self]
+   keeps the payload register, M1 takes the tag register. *)
 let e6_name : string = "every_msg_from_vsts_controller_carries_vsts_key"
 
 let test_e6_register_guard () =
@@ -230,7 +236,10 @@ let test_e6_register_guard () =
             if String.equal n needle then Some (suite ^ " ships " ^ n)
             else None)
           (names_of invs))
-      (("Helper_invariants.helper_family (P18)", family) :: shipped_suites)
+      (("Helper_invariants.helper_family (P18)", family)
+      :: ( "Msg_provenance.provenance_family (P19)",
+           Anvil_assurance.Msg_provenance.provenance_family ~controller_id )
+      :: shipped_suites)
   in
   (* POSITIVE CONTROL first (P18 review): the SAME detector run for a name
      known to be shipped produces exactly one hit - the absence assertion
@@ -241,7 +250,8 @@ let test_e6_register_guard () =
     [ "Helper_invariants.helper_family (P18) ships " ^ h1_name ]
     (hits_of h1_name);
   Alcotest.(check (list string))
-    "the :1213 message-sibling name is shipped by NO suite" []
+    "the :1213 message-sibling name is shipped by EXACTLY the P19 family"
+    [ "Msg_provenance.provenance_family (P19) ships " ^ e6_name ]
     (hits_of e6_name)
 
 (* ==== 3. the L0 / L0v replicas for the E1 / E4 pins ======================== *)
@@ -517,7 +527,9 @@ let () =
             "family DISJOINT from every shipped suite (Pair_guard, both \
              components)"
             `Quick test_family_is_disjoint_from_shipped_suites;
-          Alcotest.test_case "E6: the :1213 name is shipped by no suite"
+          Alcotest.test_case
+            "E6 (re-scoped): the :1213 name is shipped by EXACTLY the P19 \
+             family"
             `Quick test_e6_register_guard;
         ] );
       ( "exclusion_pins",

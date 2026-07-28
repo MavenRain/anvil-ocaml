@@ -1391,3 +1391,86 @@ val check_settles_after_disable :
       [decisive = false], [settled_with_faults_live = 0] - the extra pass pushes
       settling past [depth = 16]), while [depth = 40] blows the alarm. That is a
       disclosed COVERAGE limit of the phase, not a verdict. *)
+
+val check_msg_provenance_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_fault:bool ->
+  fault_report
+(** {b P19} (BUILD-SPEC-P19 section 4): the message-provenance family
+    ({!Msg_provenance.provenance_family} = M1
+    [every_msg_from_vsts_controller_carries_vsts_key], M2
+    [all_requests_from_pod_monkey_are_api_pod_requests], M3
+    [all_requests_from_builtin_controllers_are_api_delete_requests], M4
+    [no_pending_request_to_api_server_from_api_server_or_external] - port
+    renderings, disclosed deviations and the upstream citations live in
+    [msg_provenance.mli]; the E1'-E5' exclusion ledger in BUILD-SPEC-P19
+    section 3) checked by reachability over the fault product, asserted
+    ALONE with per-member [interesting] counts - the P14-P16/P18
+    DISJOINT-family pattern (no shipped suite contains any member;
+    [t_p19_regression] pins the (name, source) disjointness).
+
+    {b Shape: the P18 leg's clone MINUS [?vct] - the k6-class cut
+    returns.} Same seed family ([Scenario.vsts_seed_faults ~desired
+    ~crash:true ~req_drop ~pod_monkey ()], exactly G7's - the crash flag
+    ON with the crash DIMENSION selected by the caller's budget), same
+    [default_depth], same {!faulted_successors} product, same
+    {!violated_of} naming, same [require_fault]/{!budget_fault_taken}
+    gate. The ONE deviation from {!check_helper_invariants_under_faults}
+    is that [?vct] is ABSENT: P18 re-admitted it because H2's premise
+    needs a stored PVC, but no P19 member's premise reads PVCs or volumes
+    at all (all four quantify over
+    [Message.Pool.distinct (Cluster.in_flight s)] only), so the vct
+    dimension buys no de-vacuation and its legs are deliberately out of
+    scope this phase - the same disclosure class as
+    {!check_objects_in_store_under_faults}'s cut, with the stronger
+    justification (BUILD-SPEC-P19 section 8.2).
+
+    {b The four-leg matrix} (bound = P13's shape, [depth = 40],
+    [desired = 1]; budget literals via the witness chain):
+    L0 ([zero_budget], [~require_fault:false]) /
+    Lc ({!budget_crash_only}, [~require_fault:true]) /
+    Ld (drop-only [{0; 1; 0}], [~req_drop:true], [~require_fault:true]) /
+    Lm (monkey-only [{0; 0; 1}], [~pod_monkey:true],
+    [~require_fault:true]). Graph identity: the product graph depends
+    only on (seed, bound, budget, depth), never on the invariant list, so
+    the four graphs must be EXACTLY P13-P18's 76 / 464 / 744 / 1976
+    states. Any drift means the seed or bound moved: STOP and diagnose,
+    never retune.
+
+    {b Honest-vacuity discipline (M3, P14 N5)}: no vsts-spine graph fires
+    the builtin controller (BUILD-SPEC-P19 section 5 prediction 3), so
+    M3's per-member count 0 on all four legs IS the expected result,
+    asserted per leg; its strictly positive floor lives in the ORPHAN
+    REPLICA owned by [t_p19_provenance] (spec section 4) - a test-level
+    replica over the generic spine, NOT a leg of this function. M1 is
+    MODEL-CONDITIONAL (claimed on the vsts spine only); the orphan
+    replica measures it as a live RED CONTROL, never asserts it
+    ([msg_provenance.mli], spec section 8.5).
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on
+    the sibling legs: [false] counts states where SOME member's
+    [interesting] fires (the non-vacuity floor, intended at
+    [zero_budget]); [true] additionally requires {!budget_fault_taken}.
+
+    {b MEASURED (B3-B5, 2026-07-27; every BUILD-SPEC-P19 section 5
+    prediction CONFIRMED BY NUMBER - that section carries the full table;
+    pins in [test/p19_witness.ml], asserted by [t_p19_provenance]).} All
+    four legs clean + DECISIVE with faithful local replicas (replica
+    [states_seen] = leg [states] on all four; recomputed union gates =
+    [gate_states] on all four). (1) Graphs exact: L0 76 / Lc 464 / Ld 744 /
+    Lm 1976 - the P13-P18 identity, no drift. (2) Gates 32 / 296 / 448 /
+    1824, load-bearing (the seed's in-flight pool is EMPTY, so the gate is
+    a PROPER subset on L0/Lc/Ld). (3) Per-member [interesting]:
+    M1 16 / 156 / 64 / 368; M2 0 / 0 / 0 / 832 (its premise needs the
+    monkey budget); M3 0 on EVERY leg (the honest vacuity above), with its
+    strictly positive floor 679 of 1518 states on the orphan replica;
+    M4 16 / 208 / 448 / 1216. (4) The orphan replica additionally refutes
+    M1 asserted ALONE ([check_safety] = [Refuted], [first_violated] naming
+    M1 - the live RED CONTROL, forge-free) while M2/M3/M4 stay green
+    there. CPU times ([Sys.time], leg-call-only) 0.012 / 0.067 / 0.133 /
+    0.813 s, replica 0.475 s. *)
