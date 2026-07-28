@@ -56,7 +56,10 @@ let witness_depth : int = P17_witness.witness_depth
      L0  zero    {0;0;0}  non-vacuity floor, fault-free, vct:false
      Lc  crash   {1;0;0}  crash dimension (predicted store-inert for H1/H2)
      Ld  drop    {0;1;0}  drop fabricates responses only
-     Lm  monkey  {0;0;1}  THE RELY-GAP PROBE (spec section 4 prediction 4)
+     Lm  monkey  {0;0;1}  THE RELY-GAP PROBE (spec section 4 prediction 4;
+                          P20 reading: the rely is RED on this graph, so Lm's
+                          H1 green is emergent robustness - BUILD-SPEC-P20
+                          section 6 D5)
      L0v zero    {0;0;0}  at vct:TRUE - H2's non-vacuity floor *)
 let zero_budget : Fc.budget = P17_witness.zero_budget
 let lc_budget : Fc.budget = P17_witness.lc_budget

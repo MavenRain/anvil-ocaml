@@ -39,6 +39,7 @@ let settling_bound ~(desired : int) : Bound.t =
     rv_ceiling = desired + 3;
     reconcile_ceiling = 2;
     max_reconcile_depth = 16;
+    monkey_forge = [];
   }
 
 (* ---- outcome accessors (two-arm match = exhaustive enumeration of the sum) ---- *)

@@ -6,6 +6,7 @@ type t = {
   rv_ceiling : int;
   reconcile_ceiling : int;
   max_reconcile_depth : int;
+  monkey_forge : Pod.t list;
 }
 
 let default =
@@ -17,4 +18,5 @@ let default =
     rv_ceiling = 32;
     reconcile_ceiling = 8;
     max_reconcile_depth = 16;
+    monkey_forge = [];
   }

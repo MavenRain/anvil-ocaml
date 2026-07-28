@@ -214,7 +214,7 @@ let vsts_invariants ~(cr : V_stateful_set.t) ~(controller_id : int) :
   let inv_self =
     {
       Invariants.name = "vsts_reconcile_request_only_interferes_with_itself";
-      source = "vstatefulset_controller/proof/helper_invariants/predicate.rs (widened inv9)";
+      source = "vreplicaset_controller/proof/helper_invariants/predicate.rs:237 (widened inv9; vstatefulset has no upstream analogue)";
       holds =
         (fun s ->
           List.for_all

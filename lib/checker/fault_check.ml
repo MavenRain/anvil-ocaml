@@ -823,3 +823,225 @@ let check_msg_provenance_under_faults ?(depth = default_depth)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
+
+(* ---- P20 (BUILD-SPEC-P20 section 4): the RELY-condition register ---- *)
+
+(* P20 Leg A. The VSTS pod-monkey rely family ({!Rely_conditions.rely_family} =
+   R1 [vsts_rely_create_req] (trusted/rely_guarantee.rs:57), R2
+   [vsts_rely_update_req] (:76), R3 [vsts_rely_conditions_pod_monkey] (:17))
+   asserted ALONE by reachability over the fault product. Structurally the P19
+   leg ({!check_msg_provenance_under_faults} above) with the invariant list
+   swapped: same seed [Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop
+   ~pod_monkey ()], same pointwise lift [fun f -> inv f.cs], same
+   {!violated_of}, same [default_depth], same [require_fault]/
+   {!budget_fault_taken} gate, and NO [?vct].
+
+   TWO deviations from the sibling legs, both deliberate and both disclosed in
+   the .mli:
+
+   - the invariant list is a plain VALUE, not [f ~cr ~controller_id]: the rely
+     predicate is CR-agnostic and controller-id-agnostic because upstream
+     quantifies [exists |vsts: VStatefulSetView|] over ALL vsts views and the
+     port renders that existential EXACTLY via the owner-ref collapse
+     (rely_conditions.mli). [controller_id] is still bound here because
+     {!run_leg} needs it for the metadata pass, never for the property;
+   - NO [?vct], and the justification is stronger than P19's k6-class cut: the
+     monkey emits pod-keyed requests ONLY - which is exactly what P19's M2
+     [all_requests_from_pod_monkey_are_api_pod_requests] asserts and what P19
+     measured (msg_provenance.mli) - so the PersistentVolumeClaim arm of R1/R2
+     is unreachable on any live graph REGARDLESS of [vct]. A vct leg would be
+     outcome-identical, not merely uninteresting.
+
+   Graph identity: the product graph depends only on (seed, bound, budget,
+   depth), never on the invariant list, so at P13's bound / depth 40 the four
+   budgets reproduce the committed 76 / 464 / 744 / 1976 graphs exactly. A RED
+   member here is an ASSUMPTION-VIOLATION datum - the environment left the
+   region upstream's proof assumes - and is NOT a defect in Anvil and NOT a
+   soundness finding against the port (rely_conditions.mli says this first and
+   at length). *)
+let check_rely_conditions_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
+  in
+  let invs = Rely_conditions.rely_family in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
+
+(* ---- P20 section 4.3: the forge shapes (Leg B's inputs) ---- *)
+
+(* The finalizer both forges carry. It is what makes H1 RED once the object
+   reaches etcd (H1 requires [Option.is_none md.finalizers],
+   helper_invariants.ml:82), and it survives the api server: Anvil's
+   [handle_create_request] copies the request metadata forward and resets ONLY
+   [deletion_timestamp] (api_server.ml:265-273), so forge-by-finalizer LANDS
+   while forge-by-deletionTimestamp does not - the P18 MB3 three-layer
+   laundering result, reused rather than rediscovered. *)
+let forge_finalizer : string = "anvil-ocaml/p20-forge"
+
+(* The forged ordinal, and it is load-bearing that it lies OUTSIDE the
+   reconciler's live range [0 .. desired-1].
+
+   THE VACUOUS-GREEN TRAP: [create_request_admission_check] returns
+   [Object_already_exists] on a name collision (api_server.ml:243-245), so a
+   forge at an ordinal the reconciler also mints would have its create rejected
+   on every state where the real pod is already stored, and the leg would
+   report a clean run that measured nothing. [desired + 1] is one clear of the
+   largest live ordinal [desired - 1]. *)
+let forge_ordinal ~(desired : int) : int = desired + 1
+
+(* P20 section 4.3. The RELY-VIOLATING forge: the pod the reconciler WOULD have
+   minted at an ordinal it never mints, plus a finalizer.
+
+   Every clause is load-bearing:
+
+   - the name IS vsts-prefixed, because it is minted by the reconciler's own
+     {!V_stateful_set_reconciler.make_pod} (:361-383, name via [pod_name] at
+     :190-191). That is what fails R1 conjunct (a) (rely_guarantee.rs:61-66)
+     and R2 conjunct (a) (:80), and it is also what makes H1's [pod_premise]
+     fire on the stored key ([get_ordinal] parses it, helper_invariants.ml:58-62);
+   - the ordinal is {!forge_ordinal}, outside the live range (see above);
+   - it carries the vsts CONTROLLER owner ref, again because [make_pod] builds
+     it, which fails R1 conjunct (b) (:68-69) and R2 conjunct (c) (:85);
+   - the NAMESPACE is set explicitly from the CR. [make_pod] leaves
+     [metadata.namespace] at [None] (the reconciler supplies it on the create
+     request), and the monkey would then key the request at namespace [""]
+     ([Pod_monkey.pod_namespace], pod_monkey.ml:38-39), where H1's [pod_premise]
+     namespace conjunct cannot fire. Without this line the leg is silently
+     vacuous;
+   - the finalizer is the H1-reddening payload (see {!forge_finalizer}).
+
+   NOT a claim about Anvil: a red here is the ASSUMPTION-NECESSITY witness of
+   BUILD-SPEC-P20 section 4.3 - it shows the rely condition is load-bearing for
+   H1 rather than decorative. The .mli states that in those words. *)
+let rely_violating_forge ~(desired : int) : Pod.t =
+  let cr = Scenario.vsts ~desired () in
+  let ns =
+    Option.value ~default:"" (Object_meta.namespace (V_stateful_set.metadata cr))
+  in
+  let base = V_stateful_set_reconciler.make_pod cr (forge_ordinal ~desired) in
+  let md : Object_meta.t = Pod.metadata base in
+  Pod.with_metadata
+    { md with Object_meta.namespace = Some ns; finalizers = Some [ forge_finalizer ] }
+    base
+
+(* P20 section 7 row C1, the CONTAINMENT CONTROL, and the measured stand-in for
+   the rely-respecting forger leg section 1 deliberately did NOT ship.
+
+   Byte-for-byte {!rely_violating_forge} except in the two rely-relevant
+   fields: the name is NOT vsts-prefixed and there is no vsts owner ref. The
+   finalizer is KEPT, which is what makes the control sharp - if H1 stays green
+   on this forge it is because H1's premise never fires on the name, not because
+   the payload was harmless. Upstream's own containment lemmas
+   (helper_lemmas.rs:92-102 for pods, :80-90 for PVCs) predict exactly that
+   green, and measuring it is what attributes {!rely_violating_forge}'s red to
+   RELY-VIOLATION rather than to forging as such. *)
+let rely_respecting_forge ~(desired : int) : Pod.t =
+  let cr = Scenario.vsts ~desired () in
+  let ns =
+    Option.value ~default:"" (Object_meta.namespace (V_stateful_set.metadata cr))
+  in
+  let base = V_stateful_set_reconciler.make_pod cr (forge_ordinal ~desired) in
+  let md : Object_meta.t = Pod.metadata base in
+  Pod.with_metadata
+    {
+      md with
+      Object_meta.name =
+        Some ("p20-outsider-" ^ string_of_int (forge_ordinal ~desired));
+      namespace = Some ns;
+      owner_references = None;
+      finalizers = Some [ forge_finalizer ];
+    }
+    base
+
+(* The etcd key a forged pod lands at. This is the api server's key, not
+   {!Pod.object_ref}: the monkey keys its create request at
+   [(Pod_monkey.pod_namespace pod, Pod_monkey.pod_name pod)]
+   (pod_monkey.ml:38-43, the total completions of Anvil's [->0] unwraps) and the
+   api server stores at [{kind = obj.kind; name; namespace = req.namespace}]
+   (api_server.ml:285-290). Rebuilding it here with the SAME [~default:""]
+   completions keeps the gate total - a [Res.t] read would silently DROP an
+   ill-formed forge from the floor instead of counting it as absent. *)
+let forge_key (p : Pod.t) : Common.object_ref =
+  let md : Object_meta.t = Pod.metadata p in
+  {
+    Common.kind = Pod.kind;
+    namespace = Option.value ~default:"" md.namespace;
+    name = Option.value ~default:"" md.name;
+  }
+
+(* P20 Leg B - [Lf]. The P18 helper family (H1/H2) over the SAME fault product,
+   run against a [Bound.t] whose {!Bound.monkey_forge} is non-empty.
+
+   There is no new adversary, no new step and no new budget dimension: the
+   forged pod is fired through the existing [Step.Pod_monkey_step] and is
+   charged [Monkeys] exactly like any other monkey op ([step_dimension] above,
+   :81). The ONLY difference from {!check_helper_invariants_under_faults} is the
+   candidate list the enumerator ranges over (cluster.ml:748-758) and the GATE.
+
+   THE GATE IS THE POINT, and it is NOT "a forge step was taken". It counts
+   states where a forged object has ACTUALLY reached etcd AND H1's [pod_premise]
+   fires on its key - the two conditions that together make the red attributable
+   to the forge. A zero means the leg measured NOTHING (the create was rejected,
+   or the name does not parse as an ordinal, or the namespace is wrong) and must
+   be read as a failed experiment, never as a clean run. With
+   [bound.monkey_forge = []] the gate is 0 by construction, which is the honest
+   self-report of a leg run without its input.
+
+   [pod_premise] is copied VERBATIM from helper_invariants.ml:58-62 (H1's own
+   premise, upstream :54-58) rather than re-derived, so the floor and the
+   invariant cannot drift apart. No [~require_fault]: a forged object can only
+   reach etcd through a [Pod_monkey_step], which is charged [Monkeys], so
+   [gate > 0] already implies [monkeys >= 1] and a [require_fault] conjunct
+   would be a no-op. No [?vct] either, for {!check_rely_conditions_under_faults}'s
+   reason. *)
+let check_rely_forge_under_faults ?(depth = default_depth) ?(req_drop = false)
+    ?(pod_monkey = false) (bound : Bound.t) (budget : budget) ~(desired : int) :
+    fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
+  in
+  let cr = Scenario.vsts ~desired () in
+  let md_cr : Object_meta.t = V_stateful_set.metadata cr in
+  let parent = Option.value ~default:"" (Object_meta.name md_cr) in
+  let vsts_ns = Option.value ~default:"" (Object_meta.namespace md_cr) in
+  let pod_premise (key : Common.object_ref) : bool =
+    Common.equal_kind key.kind Pod.kind
+    && String.equal key.namespace vsts_ns
+    && Option.is_some (V_stateful_set_reconciler.get_ordinal parent key.name)
+  in
+  let landed_keys =
+    List.filter pod_premise (List.map forge_key bound.Bound.monkey_forge)
+  in
+  let invs = Helper_invariants.helper_family ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             List.exists
+               (fun (key : Common.object_ref) ->
+                 Option.is_some (Cluster.lookup_resource f.cs key))
+               landed_keys)))

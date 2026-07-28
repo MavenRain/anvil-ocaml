@@ -81,6 +81,7 @@ let tight_bound : Bound.t =
     rv_ceiling = 1;
     reconcile_ceiling = 8;
     max_reconcile_depth = 4;
+    monkey_forge = [];
   }
 
 (* A bound generous enough (uid_ceiling 4 / rv_ceiling 6) that the reconcile CAN
@@ -95,6 +96,7 @@ let generous_bound : Bound.t =
     rv_ceiling = 6;
     reconcile_ceiling = 8;
     max_reconcile_depth = 8;
+    monkey_forge = [];
   }
 
 (* ---- outcome accessors (two-arm match = exhaustive enumeration of the sum) ---- *)

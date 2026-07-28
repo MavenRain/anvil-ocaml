@@ -19,6 +19,7 @@ let p12_bound ~(desireds : int list) : Bound.t =
     reconcile_ceiling = n + 1;
     (* n concurrent starts need ceiling >= n *)
     max_reconcile_depth = 24;
+    monkey_forge = [];
   }
 
 (* The witness: two 1-replica CRs, the cheapest >= 2-concurrent seed. *)

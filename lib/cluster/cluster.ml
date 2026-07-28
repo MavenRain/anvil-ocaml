@@ -744,7 +744,19 @@ let enabled_successors (b : Bound.t) (t : t) (s : cluster_state) :
   (* pod monkey: candidate pods are the stored Pod objects, capped by
      max_objects_per_kind. This excludes pod-monkey states reached from pods
      never present in etcd (the object-count-symmetry bug class of
-     max_objects_per_kind). *)
+     max_objects_per_kind).
+
+     P20 (BUILD-SPEC-P20 section 4.2): [b.monkey_forge] re-admits exactly that
+     excluded class, one hand-authored pod at a time. Upstream's monkey ranges
+     over an ARBITRARY [Pod] under precondition [true], so the restriction above
+     is a SEARCH decision, not a model difference, and the forge list widens the
+     search back toward upstream on that axis. Forged candidates are appended
+     AFTER the capped stored list and are deliberately NOT subject to
+     [max_objects_per_kind] (bound.mli documents the asymmetry: this list is an
+     explicit finite constant, and capping it could silently drop the witness a
+     leg exists to produce). Default [[]] leaves the candidate list
+     element-for-element identical, which is what keeps every committed graph
+     pin unchanged. *)
   let pod_candidates =
     take b.max_objects_per_kind
       (List.filter_map
@@ -753,6 +765,7 @@ let enabled_successors (b : Bound.t) (t : t) (s : cluster_state) :
              Result.to_option (Pod.unmarshal obj)
            else None)
          (Object_ref_map.bindings s.api_server.resources))
+    @ b.monkey_forge
   in
   let pod_steps =
     List.concat_map

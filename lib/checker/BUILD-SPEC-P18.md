@@ -327,6 +327,22 @@ disclosure, not a second assertion site.
    candidate-RESTRICTED monkey cannot violate H1 on this graph. This measures
    the shipped monkey only (section 8.6 residual stands: a fabricating monkey
    remains future surface).
+
+   > **P20-CORRECTED READING (BUILD-SPEC-P20 §6 D5, prose only - no P18 number
+   > moved).** Every measurement in this entry stands. What was wrong is the
+   > reading it invites: "Lm clean" was readable as the port's monkey staying
+   > rely-CONSISTENT. P20 shipped the rely condition itself as a family
+   > (`Rely_conditions`, `rely_guarantee.rs:17` / `:57` / `:76`) and MEASURED it
+   > REFUTED on this same Lm graph: R3 red at 416 of its 832 premise-firing
+   > states, R1 and R2 red at 208 of 208 each. The mechanism is the candidate
+   > restriction itself - a re-sent STORED vsts pod carries the vsts controller
+   > owner ref the rely forbids (`rely_guarantee.rs:68-69` / `:82-83` / `:85`),
+   > and P20 measured by mutation that this OWNER-REF conjunct alone carries the
+   > result. So H1 holding on Lm is **emergent robustness**, not
+   > rely-consistency, and section 8.6's premise ("the rely boundary has never
+   > been exercised") is false: it has been crossed since P13. P20's Leg B shows
+   > the assumption IS load-bearing - one rely-VIOLATING forged pod takes H1 red
+   > (7064 states, gate 1560, H1 red 1560).
 5. **CONFIRMED.** Lm max_uid_seen = 4 (= P16's Lm graph constant; max_rv = 4)
    via monkey-DELETE + reconciler re-create; asserted off the leg report in
    t_p18_helper. The false BUILD-SPEC-P17.md:226 literal reading was not

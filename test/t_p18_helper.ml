@@ -24,6 +24,23 @@
       (api_server.ml:449-462), delete removes a no-finalizer pod outright,
       and delete+recreate mints a fresh uid which [eq_without_uid] ignores.
 
+      CORRECTED READING (P20, BUILD-SPEC-P20 section 6 D5 - prose only, no
+      number below moved). P18 left this headline readable as "the monkey
+      stayed inside the rely, so H1 held", i.e. a rely-CONSISTENCY result.
+      P20 MEASURED that reading false. On this exact Lm graph (the same 1976
+      states), P20's rely family is RED: [vsts_rely_conditions_pod_monkey]
+      (rely_guarantee.rs:17) is violated at 416 of its 832 premise-firing
+      states, and BOTH arms are red at 208 of 208 each
+      (vsts_rely_create_req :57, vsts_rely_update_req :76) - because the
+      candidate restriction re-sends STORED vsts pods, which carry the vsts
+      controller owner ref that rely_guarantee.rs:68-69 / :82-83 / :85
+      forbid a monkey request to carry. So the rely boundary has been
+      crossed on this leg since P13. H1's clean verdict here is therefore
+      EMERGENT ROBUSTNESS - H1 holds even though the assumption its upstream
+      proof rests on is FALSE at these states - and NOT evidence that the
+      port's monkey respects the rely. Pins: p20_witness.ml r3_red_lm 416,
+      r1_red_lm / r2_red_lm 208, h1_red_lm 0; asserted by t_p20_rely.
+
    3. HONEST VACUITY (H2, the P14 N5 discipline): no [vct:false] graph ever
       mints a PVC, so H2's per-member count 0 IS the result on L0/Lc/Ld/Lm,
       asserted per leg; H2's strictly-positive non-vacuity floor lives on
@@ -379,13 +396,22 @@ let test_ld () =
     P18_witness.h2_interesting_ld_post_drop
     (fires family_f reach ~slice:post_drop h2_name)
 
-(* ==== Lm: monkey-only {0;0;1} - THE RELY-GAP PROBE (prediction 4) ========= *)
+(* ==== Lm: monkey-only {0;0;1} - THE RELY-GAP PROBE (prediction 4) =========
+   P20 correction (spec section 6 D5): "rely-gap" here names the gap between
+   upstream's ASSUMPTION and the port's monkey MODEL, not a gap the monkey
+   declines to cross. P20 measured the crossing (rely family RED on this
+   graph); see the corrected reading at the top of this file. *)
 
 let test_lm () =
   let r = Lazy.force lm in
   let reach = Lazy.force lm_reach in
   (* THE HEADLINE: clean here means the rely-UNCONSTRAINED (but candidate-
-     RESTRICTED) monkey cannot violate H1 - measured, not argued. *)
+     RESTRICTED) monkey cannot violate H1 - measured, not argued.
+     P20-CORRECTED READING (spec section 6 D5): clean here does NOT mean the
+     monkey stayed inside the rely. P20 measured the rely REFUTED on this very
+     graph (r3_red_lm 416, r1_red_lm / r2_red_lm 208, p20_witness.ml), so this
+     green is EMERGENT ROBUSTNESS - H1 survives an environment outside the
+     region upstream's proof assumes - not rely-compliance. *)
   check_leg_semantics "Lm" r;
   (* EDGE-TAKEN first. *)
   Alcotest.(check bool) "Lm: max_monkeys_seen >= 1 (monkey edge REALLY taken)"
@@ -490,8 +516,9 @@ let () =
           Alcotest.test_case "Lc: crash-only" `Quick test_lc;
           Alcotest.test_case "Ld: drop-only (content-insensitive)" `Quick
             test_ld;
-          Alcotest.test_case "Lm: monkey-only (THE RELY-GAP PROBE)" `Quick
-            test_lm;
+          Alcotest.test_case
+            "Lm: monkey-only (THE RELY-GAP PROBE; P20 reading: emergent \
+             robustness, the rely is RED here)" `Quick test_lm;
           Alcotest.test_case "L0v: vct:true (H2's non-vacuity floor)" `Quick
             test_l0v;
         ] );

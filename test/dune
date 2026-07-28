@@ -15,7 +15,8 @@
    t_p15_reconcile_correspondence t_p15_mutation t_p16_req_resp
    t_p16_mutation t_p16_regression t_p17_store t_p17_regression
    t_p17_mutation t_p18_helper t_p18_mutation t_p18_regression
-   t_p19_provenance t_p19_mutation t_p19_regression)
+   t_p19_provenance t_p19_mutation t_p19_regression t_p20_rely
+   t_p20_mutation t_p20_regression)
  (libraries anvil_support anvil_k8s_objects anvil_state_machine anvil_reconciler
    anvil_cluster anvil_controllers anvil_assurance anvil_checker anvil_proof
    anvil_exec comp_cat alcotest qcheck-core qcheck-alcotest)

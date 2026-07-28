@@ -107,6 +107,7 @@ let tightened_bound : Bound.t =
     rv_ceiling = 4;
     reconcile_ceiling = 1;
     max_reconcile_depth = 8;
+    monkey_forge = [];
   }
 
 (** The bounded next-relation: [s'] is a {!Cluster_check.bounded_successors} of

@@ -49,6 +49,7 @@ let settling_bound : Bound.t =
     rv_ceiling = 5;
     reconcile_ceiling = 1;
     max_reconcile_depth = 8;
+    monkey_forge = [];
   }
 
 let depth = 40

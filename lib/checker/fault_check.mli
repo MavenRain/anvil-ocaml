@@ -1176,6 +1176,16 @@ val check_helper_invariants_under_faults :
     H1-premise states - the rely-UNCONSTRAINED but candidate-RESTRICTED
     monkey cannot violate H1 on this graph (the shipped monkey only; a
     fabricating monkey remains future surface, spec section 8.6).
+    {b P20-CORRECTED READING of that headline} (BUILD-SPEC-P20 section 6 D5,
+    prose only - no number in this block moved): "cannot violate H1" is
+    measured and stands, but it does NOT mean the monkey stayed inside the
+    rely. P20 measured the rely itself REFUTED on this same Lm graph
+    (rely_guarantee.rs:17 red at 416 of 832 premise-firing states; its :57 and
+    :76 arms red at 208 of 208 each, p20_witness.ml), because a re-sent STORED
+    vsts pod carries the vsts controller owner ref the rely forbids. H1's Lm
+    green is therefore EMERGENT ROBUSTNESS, not rely-consistency. P20's Leg B
+    (check_rely_forge_under_faults) shows the assumption IS load-bearing: one
+    rely-VIOLATING forged pod takes H1 red.
     (5) Lm [max_uid_seen = 4] (= P16's Lm constant, [max_rv_seen = 4])
     via monkey-DELETE + reconciler re-create, never "create on a live
     key lands" (BUILD-SPEC-P17.md:226's literal reading is false - such
@@ -1474,3 +1484,303 @@ val check_msg_provenance_under_faults :
     M1 - the live RED CONTROL, forge-free) while M2/M3/M4 stay green
     there. CPU times ([Sys.time], leg-call-only) 0.012 / 0.067 / 0.133 /
     0.813 s, replica 0.475 s. *)
+
+val check_rely_conditions_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_fault:bool ->
+  fault_report
+(** {b P20 LEG A} (BUILD-SPEC-P20 section 4.1): the VSTS pod-monkey RELY family
+    ({!Rely_conditions.rely_family} = R1 [vsts_rely_create_req]
+    (vstatefulset_controller/trusted/rely_guarantee.rs:57), R2
+    [vsts_rely_update_req] (:76), R3 [vsts_rely_conditions_pod_monkey] (:17))
+    checked by reachability over the fault product, asserted ALONE with
+    per-member [interesting] counts - the P14-P16/P18/P19 DISJOINT-family
+    pattern. Port renderings, the owner-ref existential COLLAPSE, the R1/R2
+    LIFT and the E1-E4 exclusion ledger live in [rely_conditions.mli] and
+    BUILD-SPEC-P20 sections 2-3.
+
+    {b WHAT A RED MEANS HERE, and it is different from every prior leg.} Every
+    family this port shipped before P20 asserts something upstream PROVES. These
+    three are what upstream ASSUMES about the ENVIRONMENT and never discharges:
+    R3 sits in the composition record's [environment_rely] slot
+    (composition/vstatefulset_reconciler.rs:23) and is consumed as a PREMISE. So
+    a RED member is an ASSUMPTION-VIOLATION datum - "the environment left the
+    region upstream's proof assumes" - and is NOT a defect in Anvil, NOT a
+    soundness finding against the port, and NOT a refutation of anything Anvil
+    claims. A reviewer reading a red row without that framing will misread it.
+
+    {b Shape: the P19 leg's clone with the invariant list swapped.} Same seed
+    family ([Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop
+    ~pod_monkey ()] - the crash flag ON with the crash DIMENSION selected by the
+    caller's budget), same [default_depth], same {!faulted_successors} product,
+    same {!violated_of} naming, same [require_fault]/{!budget_fault_taken} gate.
+    Two deviations, both deliberate:
+
+    - {b the invariant list is a plain VALUE}, not [f ~cr ~controller_id]. The
+      rely predicate is CR-agnostic and controller-id-agnostic, and per
+      [rely_conditions.mli] that is FIDELITY, not convenience: upstream
+      quantifies [exists |vsts: VStatefulSetView|] over ALL vsts views (:68-69,
+      :82-85) and the port renders that existential EXACTLY through the
+      owner-ref collapse. [Scenario.controller_id] is still bound inside the leg
+      because {!run_leg} needs it for the metadata pass, never for the property.
+    - {b NO [?vct]}, and the justification is stronger than P19's k6-class cut
+      rather than inherited from it. The monkey emits pod-keyed requests ONLY -
+      exactly what P19's M2 [all_requests_from_pod_monkey_are_api_pod_requests]
+      asserts, over the four permitted pod arms P19 measured - so the
+      PersistentVolumeClaim arm of R1 and R2 is unreachable on any live graph
+      REGARDLESS of [vct]. A vct leg would be OUTCOME-IDENTICAL, not merely
+      uninteresting. The PVC arm is not narrowed away; it is disclosed as
+      forge-only ([rely_conditions.mli], BUILD-SPEC-P20 residual 2).
+
+    {b The four-leg matrix} (bound = P13's shape, [depth = 40], [desired = 1];
+    budget literals via the witness chain): L0 ([zero_budget],
+    [~require_fault:false]) / Lc ({!budget_crash_only}, [~require_fault:true]) /
+    Ld (drop-only [{0; 1; 0}], [~req_drop:true], [~require_fault:true]) /
+    Lm (monkey-only [{0; 0; 1}], [~pod_monkey:true], [~require_fault:true]).
+    Graph identity: the product graph depends only on (seed, bound, budget,
+    depth), never on the invariant list, so the four graphs must be EXACTLY
+    P13-P19's 76 / 464 / 744 / 1976 states. Any drift means the seed or the
+    bound moved: STOP and diagnose, never retune.
+
+    {b Honest-vacuity discipline (P14 N5).} On L0, Lc and Ld no monkey step is
+    enabled, so no monkey-sourced message can exist and all three members'
+    [interesting] counts are 0. That is a MODELLING FACT to be reported as a
+    vacuity row, never as a pass. The non-vacuity floor of this leg is Lm, and
+    it is a genuine go/no-go (BUILD-SPEC-P20 section 5 predictions 2 and 3).
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on the
+    sibling legs: [false] counts states where SOME member's [interesting] fires;
+    [true] additionally requires {!budget_fault_taken}.
+
+    {b MEASURED (B3, 2026-07-27).} As on {!check_rely_forge_under_faults}: a
+    THROWAWAY probe called this function directly and recomputed the per-member
+    counts over the same graphs with a local replica; the probe was deleted
+    after the run, and B4 owns the shipped pins. Reproduce, do not cite as an
+    asserted constant. Bound / depth / desired exactly as the matrix above.
+
+    - {b Graph identity holds}: 76 / 464 / 744 / 1976, the P13-P19 numbers,
+      with [Bound.monkey_forge] present and defaulted to [[]]
+      (prediction 1 CONFIRMED; L0v 116 too, off the [~vct:true] zero-budget
+      seed).
+    - {b L0 / Lc / Ld}: CLEAN, DECISIVE, [gate_states = Some 0] on all three -
+      no monkey step is enabled, so no monkey-sourced message exists. The
+      honest vacuity of prediction 2, CONFIRMED. Per-member on L0: all three
+      [interesting] and all three red counts are 0.
+    - {b Lm - THE HEADLINE, and it is FORGE-FREE on a COMMITTED graph}:
+      REFUTED, {!violated} naming R1 [vsts_rely_create_req] (the first family
+      member {!Invariants.first_violated} reaches), [gate_states = Some 832].
+      Per-member over the same 1976 states: R1 red 208 of 208 [interesting],
+      R2 red 208 of 208, R3 red 416 of 832. {b BOTH arms red}, so prediction 4
+      is CONFIRMED including the R2 leg the spec made a phase-STOP condition -
+      had R2's red count been 0, section 1's premise-refutation would itself
+      have been refuted. The port's echo monkey re-sends STORED vsts pods, and
+      every pod the reconciler mints carries the vsts controller owner ref
+      ([make_owner_references], v_stateful_set_reconciler.ml:218-220, stamped
+      into the pod metadata by [make_pod] at :379) - which
+      rely_guarantee.rs:68-69 / :82-83 / :85 forbid a monkey request to carry -
+      so every such [Create_pod] / [Update_pod] is already a rely-violating
+      in-flight message. The redness rests on that OWNER-REF conjunct ALONE
+      (BUILD-SPEC-P20 REVIEW-FIX D): the minted name is vsts-prefixed too, but
+      section 7's ML1 / ML2 rows measured the prefix conjunct NOT load-bearing
+      (BUILD-SPEC-P20 section 5.4).
+    - {b Prediction 5 CONFIRMED}: P18's H1 red count on that same Lm graph is
+      {b 0} while R3 is red at 416 states. The assumption is violated WITHOUT
+      consequence for H1 there - which is the corrected reading of P18's "Lm
+      CLEAN" headline: an EMERGENT-ROBUSTNESS result, not a rely-consistency
+      one.
+    - {b Prediction 6 CONFIRMED, and FORCED}: [R3 <=> R1 && R2] disagreed at
+      {b 0} states on every graph this probe measured (L0 76, Lm 1976, Lf 7064,
+      C1 6368; the shipped [t_p20_rely] case extends it to Lc and Ld, six
+      graphs and 16,692 states). What that pin buys is narrow
+      (BUILD-SPEC-P20 REVIEW-FIX A; this bullet previously called it agreement
+      between two separate renderings, which is FALSE): R3's two constrained
+      arms call the IDENTICAL [rely_create_req] / [rely_update_req] that R1 and
+      R2 call, over the identical message projection, so the identity is a
+      THEOREM of the code for ANY definition of those helpers. It is a REFACTOR
+      GUARD on R3's arm-dispatch shape and is BLIND to every defect inside the
+      helpers - the 16,692 states yield exactly what one state yields.
+    - {b On the forge graphs} (for B4's matrix): R1 red 712 / R2 red 712 /
+      R3 red 1424 on [Lf]; R1 red 208 / R2 red 208 / R3 red 416 on [C1] - the
+      rely-RESPECTING forge adds no rely violation of its own, exactly as its
+      name says, while both graphs raise every member's [interesting] to
+      712 / 712 / 2848. *)
+
+val forge_finalizer : string
+(** {b P20} (BUILD-SPEC-P20 section 4.3): the finalizer both forge shapes carry,
+    and the payload that makes H1 red once a forged object reaches etcd (H1
+    requires [Option.is_none md.finalizers], helper_invariants.ml:82).
+
+    It is a FINALIZER and not a deletion timestamp for a measured reason, reused
+    from P18's MB3 three-layer laundering result rather than rediscovered:
+    [Api_server.handle_create_request] copies the request metadata forward and
+    resets ONLY [deletion_timestamp] (api_server.ml:265-273), so
+    forge-by-finalizer LANDS in etcd and forge-by-deletionTimestamp does not. *)
+
+val forge_ordinal : desired:int -> int
+(** {b P20} (BUILD-SPEC-P20 section 4.3): the ordinal both forge shapes are
+    minted at, [desired + 1] - one clear of the largest ordinal the reconciler
+    itself mints ([desired - 1]).
+
+    {b This is the vacuous-green trap, and it is why the clause is
+    load-bearing.} [Api_server.create_request_admission_check] returns
+    [Object_already_exists] on a name collision (api_server.ml:243-245). A forge
+    at an ordinal inside the live range would therefore have its create REJECTED
+    on every state where the reconciler's own pod is already stored, and the leg
+    would report a clean run that measured nothing at all. *)
+
+val rely_violating_forge : desired:int -> Pod.t
+(** {b P20 LEG B's input} (BUILD-SPEC-P20 section 4.3): the RELY-VIOLATING
+    forged pod - the pod the reconciler WOULD have minted, at an ordinal it
+    never mints, carrying {!forge_finalizer}.
+
+    Intended use: [{ bound with Bound.monkey_forge = [ rely_violating_forge
+    ~desired ] }], then {!check_rely_forge_under_faults} on that bound.
+
+    {b Every clause of the shape is load-bearing} (section 4.3 lists four; the
+    namespace clause is a fifth, MEASURED at build time and recorded as a
+    BUILD-SPEC-P20 correction):
+
+    - {b the name IS vsts-prefixed}, because the pod is minted by the
+      reconciler's own {!V_stateful_set_reconciler.make_pod}
+      (v_stateful_set_reconciler.ml:361-383, name via [pod_name] at :190-191).
+      That is what fails R1 conjunct (a) (rely_guarantee.rs:61-66) and R2
+      conjunct (a) (:80) - the rely VIOLATION - and it is simultaneously what
+      makes H1's [pod_premise] fire on the stored key
+      ([V_stateful_set_reconciler.get_ordinal] parses it,
+      helper_invariants.ml:58-62);
+    - {b the ordinal is {!forge_ordinal}}, outside the reconciler's live range -
+      the vacuous-green trap, see there;
+    - {b it carries the vsts CONTROLLER owner ref}, again because [make_pod]
+      builds it, which fails R1 conjunct (b) (:68-69) and R2 conjunct (c) (:85);
+    - {b the NAMESPACE is set explicitly} from the CR's own metadata. [make_pod]
+      leaves [metadata.namespace] at [None] - the reconciler supplies it on the
+      create REQUEST, not on the object - so a forge taken straight from
+      [make_pod] would be keyed at namespace [""]
+      ([Pod_monkey.pod_namespace]'s [~default:""], pod_monkey.ml:38-39) and H1's
+      [pod_premise] namespace conjunct could never fire. Without this clause the
+      leg is SILENTLY vacuous;
+    - {b the finalizer} is the H1-reddening payload, see {!forge_finalizer}.
+
+    {b FRAMING, and it must be read in these words.} A red on this forge is an
+    ASSUMPTION-NECESSITY WITNESS: it shows the rely condition is LOAD-BEARING
+    for H1 rather than decorative. It is NOT a defect in Anvil, NOT "we broke
+    H1", and NOT a soundness finding - upstream's H1 proof carries the monkey
+    rely in its [requires] (helper_invariants.rs:82), so an environment outside
+    the rely is outside what that proof ever claimed. *)
+
+val rely_respecting_forge : desired:int -> Pod.t
+(** {b P20 CONTAINMENT CONTROL} (BUILD-SPEC-P20 section 7 row C1): the
+    rely-RESPECTING forge, and the measured stand-in for the rely-respecting
+    forger LEG that section 1 deliberately did not ship.
+
+    Identical to {!rely_violating_forge} except in the two rely-relevant fields:
+    the name is NOT vsts-prefixed and there is no vsts owner ref. The
+    {!forge_finalizer} is KEPT, which is what makes the control sharp - H1
+    staying green here is attributable to its premise never firing on the name,
+    not to a harmless payload.
+
+    Why a control rather than a leg: a monkey that fabricates arbitrary
+    NON-vsts-prefixed pods is 100% inside the rely and strictly more adversarial
+    than the shipped echo monkey, but it is PROVABLY green on H1/H2 by
+    upstream's own containment lemmas (helper_lemmas.rs:92-102 for pods, :80-90
+    for PVCs): H1/H2's premise set is a strict SUBSET of the names the rely
+    forbids the monkey to touch. Spending a leg to confirm a foregone conclusion
+    is phase-weight bloat; spending a control row to make
+    {!rely_violating_forge}'s red DECISIVE - attributing it to rely-VIOLATION
+    rather than to forging as such - is not. *)
+
+val check_rely_forge_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  fault_report
+(** {b P20 LEG B - [Lf]} (BUILD-SPEC-P20 section 4.3): the P18 helper family
+    ({!Helper_invariants.helper_family} = H1/H2) over the SAME fault product,
+    run against a [Bound.t] whose {!Bound.monkey_forge} is non-empty.
+
+    {b There is no new adversary.} The forged pod is fired through the EXISTING
+    [Step.Pod_monkey_step] and charged [Monkeys] like any other monkey op, so
+    this leg adds no flag to [Cluster.cluster_state], no thirteenth [Step.t]
+    arm, no [Disable_pod_forge_step] and no fourth {!budget} dimension - each of
+    which would have moved committed pins or forced ~10 exhaustive-match edits
+    (BUILD-SPEC-P20 section 4.2 cites both prohibitions). The only difference
+    from {!check_helper_invariants_under_faults} is the CANDIDATE LIST the
+    enumerator ranges over (cluster.ml:748-758, and [bound.mli]'s [monkey_forge]
+    note for why the seam is a bound) and the GATE.
+
+    {b THE GATE IS THE POINT, and it is NOT "a forge step was taken".} It counts
+    states where a forged object has ACTUALLY REACHED ETCD and H1's
+    [pod_premise] fires on its key - the two conditions that together make a red
+    attributable to the forge rather than to the run. [pod_premise] is copied
+    VERBATIM from helper_invariants.ml:58-62 (H1's own premise, upstream :54-58)
+    so the floor and the invariant cannot drift apart.
+
+    {b A ZERO GATE ON A RELY-VIOLATING FORGE IS A FAILED EXPERIMENT, never a
+    clean run.} It means the create was rejected, or the forged name does not
+    parse as an ordinal, or its namespace does not match the CR's. With
+    [bound.monkey_forge = []] the gate is 0 BY CONSTRUCTION - the honest
+    self-report of a leg run without its input.
+
+    {b THE ONE EXCEPTION, and a reader must know it: the {!rely_respecting_forge}
+    control has a STRUCTURALLY zero gate.} Its key never satisfies [pod_premise]
+    (that is the whole point of the control), so the floor is 0 no matter how
+    well the run went, and the control's evidence is the pair [clean = true] AND
+    [decisive = true] on the H1/H2 conjunction, not [gate_states]. Reading C1's
+    zero as a failed experiment inverts the row's meaning. To check the C1 forge
+    actually LANDED (rather than being rejected at admission), count states where
+    its key is present in etcd WITHOUT the [pod_premise] conjunct - B3 measured
+    864 such states of C1's 6368, so the control is live.
+
+    {b No [~require_fault]} (the one signature deviation from Leg A): a forged
+    object can only reach etcd through a [Pod_monkey_step], which
+    {!budget_fault_taken} already counts, so [gate_states > 0] implies
+    [monkeys >= 1] and a [require_fault] conjunct would be a no-op. {b No
+    [?vct]} either, for Leg A's reason.
+
+    {b The [Lf] graph pin is NEW.} It differs from Lm by construction: the forge
+    adds one pod-monkey candidate at every state, so the per-state fan-out is
+    [max_objects_per_kind + 1] rather than [max_objects_per_kind]. It was
+    MEASURED, not predicted. CORRECTION (B7): BUILD-SPEC-P20 section 5
+    prediction 8 called [Lf] "P20's ONLY new graph constant"; that clause is
+    REFUTED. [C1] below is a second new graph constant (6368), because the
+    containment control also varies [Bound.monkey_forge] and so explores its own
+    product graph. The two together are the phase's new graph constants
+    (test/p20_witness.ml:226-227 says so in the plural); every other graph pin
+    P20 uses DERIVES from p19_witness / p18_witness.
+
+    {b MEASURED (B3, 2026-07-27; REPRODUCED EXACTLY by B4 as shipped pins).}
+    The numbers below were first taken by a THROWAWAY probe that called these
+    leg functions directly and re-explored the same graphs with
+    {!faulted_successors} / {!faulted_equal} / {!faulted_hash}; the probe was
+    deleted after the run. B4 then re-derived every one of them through
+    committed test code (test/p20_witness.ml, asserted by t_p20_rely) and every
+    number reproduced exactly on the first shipped run, with no disagreement to
+    record. Read them as SHIPPED pins with a probe-first provenance.
+    P13-shaped bound ([max_in_flight 3], [max_objects_per_kind 2],
+    [max_controllers 1], [uid_ceiling 8], [rv_ceiling 8],
+    [reconcile_ceiling 2], [max_reconcile_depth 16]), [depth = 40],
+    [desired = 1], monkey-only budget [{0; 0; 1}], [~pod_monkey:true].
+
+    - [Lf] ([monkey_forge = [rely_violating_forge ~desired:1]]): graph
+      {b 7064} states - P20's new graph constant, vs Lm's 1976 forge-free.
+      Outcome REFUTED, {!violated} naming H1
+      [all_pods_in_etcd_matching_vsts_have_no_finalizer_or_deletion_timestamp_and_one_owner_ref].
+      [gate_states = Some 1560], strictly positive, so the leg measured
+      something. The H1 red count over the same graph is ALSO exactly 1560:
+      H1 is red at precisely the states where the forged pod is in etcd, which
+      is the attribution the gate exists to license. BUILD-SPEC-P20 section 5
+      prediction 7 CONFIRMED.
+    - [C1] ([monkey_forge = [rely_respecting_forge ~desired:1]]): graph
+      {b 6368} states, outcome CLEAN and DECISIVE, H1 red count 0, forged key
+      present in etcd at 864 states (so the green is containment, not
+      rejection). The containment control of section 7 row C1 CONFIRMED, which
+      is what makes [Lf]'s red decisive: it attributes the red to
+      RELY-VIOLATION rather than to forging as such. *)

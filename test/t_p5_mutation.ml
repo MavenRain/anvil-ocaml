@@ -157,6 +157,7 @@ let generous_bound : Bound.t =
     rv_ceiling = 6;
     reconcile_ceiling = 8;
     max_reconcile_depth = 8;
+    monkey_forge = [];
   }
 
 let tight_bound : Bound.t =
@@ -168,6 +169,7 @@ let tight_bound : Bound.t =
     rv_ceiling = 1;
     reconcile_ceiling = 8;
     max_reconcile_depth = 4;
+    monkey_forge = [];
   }
 
 let explore_with (b : Bound.t) (depth : int) (seed : Cluster.cluster_state) :

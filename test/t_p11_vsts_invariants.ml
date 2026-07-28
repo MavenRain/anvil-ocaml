@@ -72,6 +72,7 @@ let bfs_bound ~(desired : int) : Bound.t =
     rv_ceiling = desired + 4;
     reconcile_ceiling = 2;
     max_reconcile_depth = 16;
+    monkey_forge = [];
   }
 
 let reach_fair ~(desired : int) : Cluster.cluster_state Mc.reachable =

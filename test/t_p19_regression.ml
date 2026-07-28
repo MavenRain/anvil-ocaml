@@ -50,20 +50,32 @@
      and must NOT appear in the P19 family.
 
    - THE E4' LEDGER (spec section 3): B1's enumeration of network.rs's
-     thirteen [pub open spec fn], with P14's five and P19's three crossed
-     out and a one-line reason ledgered for every leftover. The ledger is
-     BUILT from the shipped families (names and sources read off the live
-     invariant records) and checked against the committed B1 text, so a
-     rename, a source drift, a member added to or dropped from EITHER of
-     the two families this file reads, or a leftover promoted INTO P14's
-     or P19's family without a ledger edit reddens HERE. SCOPE, exactly:
-     the ledger reads [Correspondence.family] and [provenance_family] and
-     nothing else, so a leftover shipped by a NEW family module (the
-     pattern P14-P19 all used) is OUTSIDE this guard's reach and must be
-     caught by that phase's own ledger edit - the leftover strings
-     themselves are one binding used on both sides of the comparison. A
-     second assert re-derives the accounting: crossed-out lines + ledgered
-     leftovers = exactly the thirteen enumerated, each once.
+     thirteen [pub open spec fn], with P14's five, P19's three and (after
+     the D2 fix) P15's one crossed out, and a one-line reason ledgered for
+     every leftover. The ledger is BUILT from the shipped suites (names and
+     sources read off the live invariant records) and checked against the
+     committed B1 text, so a rename, a source drift, a member added to or
+     dropped from any suite this file reads, or a leftover promoted INTO a
+     shipped family without a ledger edit reddens HERE. SCOPE, exactly, as
+     WIDENED BY D2: the crossed-out side now reads every entry of
+     [shipped_suites], not just [Correspondence.family] and
+     [provenance_family] - which is what the D2 defect was, since P15 had
+     shipped :104 and this guard was ledgering it as an unshipped leftover.
+     What is still outside reach is a member shipped by a module absent
+     from that roster; the leftover strings themselves remain one binding
+     used on both sides of the comparison. A second assert re-derives the
+     accounting: crossed-out lines + ledgered leftovers = exactly the
+     thirteen enumerated, each once.
+
+   ---- P20 stage B6 edits (BUILD-SPEC-P20 section 6, pre-authorized) --------
+
+   D1 and D2 ONLY, both CONFIRMED BY MUTATION at the site of each fix:
+   D1 corrected the E2' [internal_rely_guarantee] prefix from a path that
+   does not exist upstream (the guard could never fire); D2 reclassified
+   network.rs :104 from "unshipped leftover" to "shipped by P15's R1" and
+   widened the crossed-out side to every shipped suite. D3 (the 12-entry
+   roster) and D4 (the [inv_self] citation drift) are NOT here - D3 lands
+   in [t_p20_regression.ml], D4 in [lib/assurance/vsts_invariants.ml].
 
    ---- what it does NOT do (anti-duplication, the P15-P18 rationale) --------
 
@@ -315,10 +327,29 @@ let test_e1_valid_controller_id_is_p14_n4 () =
 (* [internal_rely_guarantee.rs:528-540] defines a semantic duplicate of
    :1213 under the SAME upstream name (bridged in liveness/proof.rs:903-926).
    The name therefore cannot discriminate; the [source] string can, and P19
-   commits to the helper_invariants citation. *)
+   commits to the helper_invariants citation.
+
+   {b D1 FIX} (BUILD-SPEC-P20 section 6, applied by P20 stage B6). This prefix
+   read ["kubernetes_cluster/proof/internal_rely_guarantee.rs"] - a path that
+   DOES NOT EXIST upstream. MEASURED with [fd] over anvil-ref: the Anvil tree
+   holds exactly one [internal_rely_guarantee.rs], at
+   [src/controllers/vstatefulset_controller/proof/], and
+   [kubernetes_cluster/proof/] has none. No [source] string in this port could
+   ever start with the old literal, so the second assertion below filtered
+   against an unmatchable prefix and asserted the empty result - VACUOUS, a
+   green that verified nothing.
+
+   CONFIRMED BY MUTATION (P20 stage B6; a guard never SEEN to fail is not
+   evidence). With M1's source temporarily re-pointed to
+   ["vstatefulset_controller/proof/internal_rely_guarantee.rs:528"] - exactly
+   the same-named duplicate E2' exists to forbid - and [m1_source] moved with
+   it so the two asserts above stay green and this one is isolated: the OLD
+   literal left this assertion GREEN (0 hits) and the corrected literal takes
+   it RED (1 hit). Same mutation, opposite verdicts. That differential is the
+   whole evidence for D1; both edits were reverted by exact [Edit]. *)
 
 let internal_rely_guarantee_prefix : string =
-  "kubernetes_cluster/proof/internal_rely_guarantee.rs"
+  "vstatefulset_controller/proof/internal_rely_guarantee.rs"
 
 let has_prefix (prefix : string) (s : string) : bool =
   String.length s >= String.length prefix
@@ -394,10 +425,45 @@ let network_members (invs : Invariants.invariant list) : (int * string) list =
            (network_line_of i))
        invs)
 
+(* {b D2 FIX} (BUILD-SPEC-P20 section 6, applied by P20 stage B6), second
+   half. The ledger below used to read exactly TWO families - [p14_family] and
+   P19's own [family] - and ledgered network.rs [:104] as an unshipped
+   leftover because it is "key-parameterized ... inside P14's pending-req
+   register". That reasoning was wrong ABOUT THE TREE:
+   [Reconcile_correspondence.pending_req_of_key_is_unique_with_unique_id]
+   (reconcile_correspondence.ml:127-131) has shipped that EXACT name and that
+   EXACT source ["kubernetes_cluster/proof/network.rs:104"] since P15 - and
+   P15's suite was already sitting in [shipped_suites] a hundred lines above,
+   unread by this guard. The blind spot P19's own F1 correction described as
+   HYPOTHETICAL ("a leftover shipped in a NEW module leaves the guard green")
+   had already fired at the time it was written.
+
+   Both halves of D2 are applied here: :104 is reclassified as SHIPPED (P15's
+   R1) with its cite, and the CROSSED-OUT side is now built from EVERY suite
+   in [shipped_suites], not from two hand-picked families. MEASURED over the
+   whole roster: P15's R1 is the only network.rs member outside P14's five and
+   P19's three (swept with [rg 'kubernetes_cluster/proof/network\.rs:'
+   lib/assurance/] - correspondence.ml x5, msg_provenance.ml x3,
+   reconcile_correspondence.ml x1). *)
+let other_shipped_network_members : (int * string) list =
+  let p14_lines : int list =
+    List.map
+      (fun ((line, _) : int * string) -> line)
+      (network_members p14_family)
+  in
+  List.sort_uniq compare
+    (List.filter
+       (fun ((line, _) : int * string) -> not (List.mem line p14_lines))
+       (network_members
+          (List.concat_map
+             (fun ((_, invs) : string * Invariants.invariant list) -> invs)
+             shipped_suites)))
+
 let member_tags : (int * string) list =
   [
     (35, "N1");
     (76, "N2");
+    (104, "P15 R1, = the D2 reclassification");
     (254, "N3");
     (312, "N4, = E1'");
     (382, "N5");
@@ -418,11 +484,12 @@ let render_members (ms : (int * string) list) : string =
 let render_lines (ls : int list) : string =
   String.concat " " (List.map (fun (l : int) -> ":" ^ string_of_int l) ls)
 
-(* The five leftovers, each with its one-line reason (the E4' requirement).
-   None is a sender-classification member - they are the rpc-id / allocator
-   register - so E4' carries NO reversal clause this phase. *)
+(* The FOUR leftovers (five before the D2 fix), each with its one-line reason
+   (the E4' requirement). None is a sender-classification member - they are
+   the rpc-id / allocator register - so E4' carries NO reversal clause this
+   phase. *)
 
-let e4_leftover_lines : int list = [ 15; 19; 104; 171; 514 ]
+let e4_leftover_lines : int list = [ 15; 19; 171; 514 ]
 
 let e4_leftovers : string list =
   [
@@ -432,9 +499,6 @@ let e4_leftovers : string list =
     ":19 rpc_id_counter_is_no_smaller_than(rpc_id) - not an always-member \
      either: an always only RELATIVE to a chosen rpc_id (lemma :23 premises \
      :15), so there is no closed member to port";
-    ":104 pending_req_of_key_is_unique_with_unique_id(controller_id, key) - \
-     key-parameterized (one member per ObjectRef, not one member) and inside \
-     P14's pending-req rpc-id register (N2/N3); not a sender classification";
     ":171 every_in_flight_req_msg_has_different_id_from_pending_req_msg_of(controller_id, \
      key) - the key-parameterized specialization that P14's shipped N3 \
      (:254) already quantifies over every ongoing reconcile; no added \
@@ -457,15 +521,24 @@ let e4_ledger : string list =
    ^ render_lines b1_network_spec_fn_lines)
   :: ("CROSSED OUT (P14's five): " ^ render_members (network_members p14_family))
   :: ("CROSSED OUT (P19 members): " ^ render_members (network_members family))
+  :: ("CROSSED OUT (shipped by ANOTHER roster suite - the D2 fix): "
+     ^ render_members other_shipped_network_members)
   :: e4_leftovers
 
 (* The committed B1 text. A rename, a source drift, a member added to or
-   dropped from either family, or a leftover promoted INTO P14's or P19's
-   family without a ledger edit reddens here. NOT in reach: a leftover
-   shipped by a NEW family module - both the ledger and the accounting
-   assert read [p14_family] and [family] only, and [e4_leftovers] is the
-   SAME binding on both sides of the comparison below, so that half is a
-   tautology. That case is the next phase's own ledger edit to make. *)
+   dropped from ANY suite in [shipped_suites], or a leftover promoted INTO a
+   shipped family without a ledger edit reddens here.
+
+   BLIND SPOT, NARROWED BY D2 BUT NOT CLOSED. The crossed-out side is now
+   built from every suite in [shipped_suites] (ten of them) rather than from
+   [p14_family] + [family], so the case that actually fired here - a leftover
+   shipped by a NEW module, P15's :104 - is now in reach. What remains out of
+   reach is a leftover shipped by a module NOT in that roster at all: the
+   roster is a hand-maintained list, and [e4_leftovers] is still the SAME
+   binding on both sides of the comparison below, so that half stays a
+   tautology. Keeping the roster current is each phase's own ledger edit to
+   make; BUILD-SPEC-P20 section 6 D3 is exactly that edit for P19's and P20's
+   own families, made in [t_p20_regression.ml]. *)
 let committed_e4_ledger : string list =
   [
     "network.rs has exactly 13 `pub open spec fn`: :15 :19 :35 :76 :104 :171 \
@@ -480,6 +553,9 @@ let committed_e4_ledger : string list =
      no_pending_request_to_api_server_from_api_server_or_external (M4); :570 \
      all_requests_from_pod_monkey_are_api_pod_requests (M2); :618 \
      all_requests_from_builtin_controllers_are_api_delete_requests (M3)";
+    "CROSSED OUT (shipped by ANOTHER roster suite - the D2 fix): :104 \
+     pending_req_of_key_is_unique_with_unique_id (P15 R1, = the D2 \
+     reclassification)";
   ]
   @ e4_leftovers
 
@@ -488,7 +564,9 @@ let test_e4_network_remainder_ledger () =
     "E4': the B1 network.rs ledger, built from the shipped families"
     committed_e4_ledger e4_ledger;
   (* The accounting, re-derived: every one of the thirteen is either crossed
-     out by a shipped family or ledgered as a leftover, exactly once. *)
+     out by a shipped suite or ledgered as a leftover, exactly once. The third
+     disjunct is the D2 widening - :104 now enters through P15's shipped R1
+     instead of through the leftover literals. *)
   Alcotest.(check (list int))
     "E4': crossed-out lines + ledgered leftovers = the thirteen enumerated, \
      each once"
@@ -496,7 +574,20 @@ let test_e4_network_remainder_ledger () =
     (List.sort Int.compare
        (List.map (fun ((line, _) : int * string) -> line) (network_members p14_family)
        @ List.map (fun ((line, _) : int * string) -> line) (network_members family)
+       @ List.map
+           (fun ((line, _) : int * string) -> line)
+           other_shipped_network_members
        @ e4_leftover_lines));
+  (* D2's POSITIVE CONTROL, read off the LIVE P15 record rather than re-typed:
+     :104 really is shipped, under upstream's own name, by the suite the old
+     ledger never looked at. A P15 rename or source drift reddens here. *)
+  Alcotest.(check (list (pair int string)))
+    "D2: :104 is SHIPPED by P15's R1 (the reclassification's own control)"
+    [ (104, "pending_req_of_key_is_unique_with_unique_id") ]
+    other_shipped_network_members;
+  Alcotest.(check bool)
+    "D2: :104 is no longer ledgered as an unshipped leftover" false
+    (List.mem 104 e4_leftover_lines);
   (* The three sender-classification lines are exactly P19's network members:
      the scope pin of the last ledger entry, mechanically. *)
   Alcotest.(check (list int)) "E4': P19's network.rs members are :540 :570 :618"

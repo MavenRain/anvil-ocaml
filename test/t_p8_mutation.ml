@@ -44,6 +44,7 @@ let settling_bound : Bound.t =
     rv_ceiling = desired + 3;
     reconcile_ceiling = 2;
     max_reconcile_depth = 16;
+    monkey_forge = [];
   }
 
 let matches_of d = (Invariants.liveness_goal ~cr:(Scenario.vrs ~desired:d)).holds

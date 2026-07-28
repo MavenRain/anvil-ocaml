@@ -7,14 +7,35 @@
     dedicated fault leg. Every [holds]/[interesting] is total, pure and
     exception-free; the one list match is exhaustive (no wildcard arm).
 
-    {b Disambiguation.} The shipped [inv_self] source string cites
+    {b Disambiguation - the drift, and its FIX.} The shipped [inv_self] source
+    string used to cite
     ["vstatefulset_controller/proof/helper_invariants/predicate.rs (widened
-    inv9)"] (vsts_invariants.ml:217) - that directory layout belongs to
-    vreplicaset_controller; vstatefulset has the single file
-    [proof/helper_invariants.rs]. The drifted string is deliberately NOT fixed
-    this phase (it would move committed (name, source) pins in four regression
-    exes; spec §8.3); THIS family's [source] strings cite the real path, so
-    the two families stay (name, source)-disjoint by construction.
+    inv9)"] (vsts_invariants.ml:217) - a path that does not exist: that
+    directory layout belongs to vreplicaset_controller, and vstatefulset has
+    the single flat file [proof/helper_invariants.rs]. P18 and P19 both
+    deferred the fix on the belief that it would move committed (name, source)
+    pins in four regression exes (P18 spec §8.3).
+
+    {b P20 stage B6 measured that belief and REFUTED it}, then applied the fix
+    (BUILD-SPEC-P20 §6 D4). The sweep: [rg 'helper_invariants/predicate'
+    test/] returns ZERO hits, and the four exes that mention [inv_self] at all
+    (t_p11_vsts_invariants.ml:169, t_p11_mutation.ml:225, t_p13_mutation.ml:38,
+    t_p19_regression.ml:380) carry only its NAME - never its source - while
+    [pair_guard.ml:29-49] computes every (name, source) pair DYNAMICALLY off
+    the live suites and all four call sites assert against the empty list. So
+    the fix moved no pin, which [git diff --stat] confirmed.
+
+    [inv_self] now cites
+    ["vreplicaset_controller/proof/helper_invariants/predicate.rs:237 (widened
+    inv9; vstatefulset has no upstream analogue)"] - the real file and line of
+    [vrs_reconcile_request_only_interferes_with_itself], with the widening
+    disclosed. MEASURED against anvil-ref: [rg 'only_interferes_with_itself'
+    src/controllers/vstatefulset_controller/] returns ZERO hits, so there is
+    no vstatefulset original to cite. The trailing parenthetical also keeps
+    the string distinct from [Invariants]' own VRS inv9 (invariants.ml:680),
+    which cites the same file:line bare. THIS family's [source] strings cite
+    [proof/helper_invariants.rs], so the two families stay (name,
+    source)-disjoint by construction either way.
 
     {b H1}
     [all_pods_in_etcd_matching_vsts_have_no_finalizer_or_deletion_timestamp_and_one_owner_ref]
@@ -127,7 +148,38 @@
     measurement, not a static reading. Cross-note correcting
     BUILD-SPEC-P17.md:226's literal wording: a monkey CREATE on a live key is
     rejected [Object_already_exists]; only delete+recreate mints a fresh uid -
-    which [eq_without_uid] ignores. *)
+    which [eq_without_uid] ignores.
+
+    {b CORRECTED READING (P20, BUILD-SPEC-P20 §6 D5).} P18's headline was
+    readable as "Lm clean = the port's monkey stayed rely-CONSISTENT". P20
+    measured that reading FALSE, on the same Lm graph and with no committed
+    number moved. {!Rely_conditions.rely_family} renders the very assumption
+    these two members are proved under (rely_guarantee.rs:17, plus its :57/:76
+    request helpers) and it is REFUTED there: R3 red at 416 of its 832
+    premise-firing states, R1 and R2 red at 208 of 208 each. The mechanism is
+    the candidate restriction itself - a re-sent STORED vsts pod carries the
+    vsts controller owner ref that rely_guarantee.rs:68-69 / :82-83 / :85
+    forbid a monkey request to carry, and P20 measured by mutation that this
+    OWNER-REF conjunct alone carries the result (the name-prefix conjunct is
+    NOT load-bearing). So {b H1} holding on Lm is {b emergent robustness}: H1
+    survives an environment OUTSIDE the region upstream's proof assumes, and
+    its premise demonstrably FIRES there ([P18_witness.h1_interesting_lm] =
+    1624, p18_witness.ml:151), so the green is not vacuous.
+    {b The claim is H1's ALONE, and H2 is excluded from it}
+    (BUILD-SPEC-P20 REVIEW-FIX E; this sentence used to read "H1/H2", which
+    contradicted this same file's own vacuity note 25 lines up at :138-141):
+    H2's premise never fires on any [vct:false] graph, Lm included, because no
+    such graph ever mints a PVC - [p18_witness.ml:153] pins
+    [h2_interesting_lm = 0]. {b H2 survived nothing on Lm}; its green there is
+    HONEST VACUITY, not robustness. The narrowed reading is the one
+    BUILD-SPEC-P18.md:341 and fault_check.mli:1185-1186 already ship, both of
+    which say H1 only.
+    Emergent robustness is not evidence of rely-compliance, and it is not a soundness finding
+    against Anvil either: H1's and H2's upstream lemmas take the rely in their
+    [requires] (helper_invariants.rs:82-86 / :1084-1086, the two cites already
+    given above), so outside it those two lemmas assert nothing. That is a
+    statement about THESE lemmas, not a claim about what Anvil proves elsewhere.
+    Pins in test/p20_witness.ml, asserted by t_p20_rely. *)
 
 val helper_sources : string list
 (** The two upstream [source] strings
