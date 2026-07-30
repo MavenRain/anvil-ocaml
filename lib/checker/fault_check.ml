@@ -1045,3 +1045,55 @@ let check_rely_forge_under_faults ?(depth = default_depth) ?(req_drop = false)
                (fun (key : Common.object_ref) ->
                  Option.is_some (Cluster.lookup_resource f.cs key))
                landed_keys)))
+
+(* ---- P21: the internal GUARANTEE leg ---- *)
+
+(* P21 leg (BUILD-SPEC-P21 §3): the VSTS internal GUARANTEE family asserted
+   ALONE over the fault product - the exact DUAL of
+   {!check_rely_conditions_under_faults}, with the epistemic reading INVERTED.
+   Upstream DISCHARGES these four members ([internal_guarantee_condition_holds],
+   internal_rely_guarantee.rs:1003, and [..._on_all_vsts], :1196), so a red
+   HERE is a FIDELITY datum against the port's own reconciler - it emitted a
+   request upstream proves its reconciler never emits - where a P20 red
+   indicts only the environment (internal_guarantee.mli says this first).
+
+   Shape: Leg A's clone with the invariant list swapped and the CR bound (the
+   family is CR- and controller-id-parameterized; the CR is the scenario's
+   own, as on {!check_helper_invariants_under_faults}). Same seed family, same
+   [default_depth], same {!faulted_successors} product, same {!violated_of}
+   naming, same [require_fault]/{!budget_fault_taken} gate.
+
+   NO NEW SEAM - the phase's strongest pin-safety property: no [Bound] field,
+   no [Cluster.cluster_state] field. The guarantee quantifies over in-flight
+   messages tagged with a controller src, and the port has tagged them since
+   P19. The committed graphs must therefore reproduce EXACTLY
+   (76 / 464 / 744 / 1976, and 116 off the vct:true zero-budget seed); any
+   drift means the seed or the bound moved - STOP and diagnose, never retune.
+
+   No [?vct] is threaded: no member reads PVC TEMPLATES (G1's PVC arm reads
+   the REQUESTED object, which is present on vct:false legs too). Disclosed as
+   a scope CUT, not a proof of irrelevance - BUILD-SPEC-P21 §3. *)
+let check_internal_guarantee_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_faults ~desired ~crash:true ~req_drop ~pod_monkey ()
+  in
+  let cr = Scenario.vsts ~desired () in
+  let invs = Internal_guarantee.guarantee_family ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))

@@ -1784,3 +1784,98 @@ val check_rely_forge_under_faults :
       rejection). The containment control of section 7 row C1 CONFIRMED, which
       is what makes [Lf]'s red decisive: it attributes the red to
       RELY-VIOLATION rather than to forging as such. *)
+
+val check_internal_guarantee_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  require_fault:bool ->
+  fault_report
+(** {b P21 LEG} (BUILD-SPEC-P21 §3): the VSTS internal GUARANTEE family
+    ({!Internal_guarantee.guarantee_family} = G1
+    [vsts_internal_guarantee_create_req]
+    (vstatefulset_controller/proof/internal_rely_guarantee.rs:562), G2
+    [vsts_internal_guarantee_get_then_delete_req] (:581), G3
+    [vsts_internal_guarantee_get_then_update_req] (:589), G4
+    [no_interfering_request_between_vsts] (:544)) checked by reachability over
+    the fault product, asserted ALONE with per-member [interesting] counts -
+    the P14-P16/P18-P20 DISJOINT-family pattern. Port renderings, the
+    singleton owner-ref test, the G4-strictness design point and the E1-E5
+    exclusion ledger live in [internal_guarantee.mli] and BUILD-SPEC-P21
+    sections 2-3.
+
+    {b WHAT A RED MEANS HERE, and it is the INVERSE of Leg A's reading.} P20's
+    rely members are assumptions about the ENVIRONMENT; a red there says the
+    environment left the assumed region and indicts nobody. These four members
+    are DISCHARGED upstream ([internal_guarantee_condition_holds], :1003;
+    [internal_guarantee_condition_holds_on_all_vsts], :1196) - upstream PROVES
+    its reconciler never emits an offending request. So a red here says the
+    PORT's reconciler emitted one: a fidelity divergence in the port and a
+    real finding (BUILD-SPEC-P21 §4 prediction 2 names the expected zero-fire
+    witness - the G4 forbidden-kind arm is reachable-but-unfired on every live
+    graph precisely because the port's emission repertoire is upstream's
+    permitted set, v_stateful_set_reconciler.ml:530/:580/:614/:649/:697/:734/:779).
+
+    {b Shape: Leg A's clone with the invariant list swapped and the CR bound.}
+    Same seed family ([Scenario.vsts_seed_faults ~desired ~crash:true
+    ~req_drop ~pod_monkey ()]), same [default_depth], same
+    {!faulted_successors} product, same {!violated_of} naming, same
+    [require_fault]/{!budget_fault_taken} gate. The family takes the scenario
+    CR ([Scenario.vsts ~desired ()]) and [Scenario.controller_id] - the
+    {!check_helper_invariants_under_faults} pattern; [internal_guarantee.mli]
+    discloses the resulting narrowing of upstream's E1 [forall vsts] closure
+    to THE scenario CR.
+
+    {b The four-leg matrix, plus a replica-only fifth row} (bound = P13's
+    shape, [depth = 40], [desired = 1]; budget literals via the witness
+    chain): L0 ([zero_budget], [~require_fault:false]) / Lc
+    ({!budget_crash_only}, [~require_fault:true]) / Ld (drop-only
+    [{0; 1; 0}], [~req_drop:true], [~require_fault:true]) / Lm (monkey-only
+    [{0; 0; 1}], [~pod_monkey:true], [~require_fault:true]). {b L0v is NOT
+    reachable through this leg}: no [?vct] is threaded and the seed is built
+    internally with vct absent - exactly Leg A's shape - so the 116-state
+    pin-safety row is measured by evaluating the family directly over a local
+    replica of the [~vct:true] zero-budget graph (the t_p20_rely L0v
+    pattern), never by calling this function. Graph identity: the product
+    graph depends only on (seed, bound, budget, depth), never on the
+    invariant list, so the five graphs must be EXACTLY the committed
+    76 / 464 / 744 / 1976 / 116 states. Any drift means the seed or the bound
+    moved: STOP and diagnose, never retune.
+
+    {b Honest-vacuity discipline (P14 N5).} G2/G3 fire only where the
+    reconciler reaches its delete/update steps (BUILD-SPEC-P21 §4
+    prediction 4), and a per-member [interesting] of 0 is reported as a
+    vacuity row, never as a pass. Prediction 3 expects the family-level gate
+    NON-zero on every leg (VSTS-sourced requests are in flight on all five
+    graphs); a zero there is an N5-style vacuity row and a refuted
+    prediction, recorded as such.
+
+    {b MEASURED (throwaway probe, 2026-07-28; reproduce, do not cite as an
+    asserted constant - the shipped pins live in test/p21_witness.ml and are
+    asserted by t_p21_guarantee).} All five graph pins reproduced EXACTLY
+    (76 / 464 / 744 / 1976 / 116) - prediction "no new seam" CONFIRMED. Every
+    leg CLEAN and DECISIVE, red 0 on every member over every graph
+    (prediction 1 CONFIRMED). Gates: L0 16, Lc 140, Ld 32, Lm 336; L0v is
+    the replica-only row above. Per-member [interesting], in G1/G2/G3/G4
+    order: L0 4/0/4/16, Lc 68/0/16/156, Ld 24/0/8/64, Lm 24/0/200/368,
+    L0v 8/0/4/28. Two prediction corrections, both recorded in
+    BUILD-SPEC-P21's MEASURED section: {b G2 is vacuous on ALL FIVE graphs}
+    ([interesting = 0] everywhere - at [desired = 1] with no scale-down the
+    reconciler never reaches its delete steps, :734/:779, so G2's green is
+    honest vacuity family-wide, the P20 PVC-arm class), and {b G3 fires even
+    on fault-free L0} (count 4), against prediction 4's "plausibly zero"
+    lean. Unlike Leg A, L0/Lc/Ld are NOT vacuity rows here: the guarantee
+    family's premise is CONTROLLER-sourced traffic, which exists without any
+    adversary.
+
+    {b No [?vct]} is threaded: no member reads PVC TEMPLATES (G1's PVC arm
+    reads the REQUESTED object, present on vct:false legs too). This is a
+    scope CUT, disclosed as such (BUILD-SPEC-P21 §3) - not a proof of
+    irrelevance, and weaker than Leg A's outcome-identity argument.
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on the
+    sibling legs: [false] counts states where SOME member's [interesting]
+    fires; [true] additionally requires {!budget_fault_taken}. *)

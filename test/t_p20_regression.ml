@@ -17,8 +17,12 @@
      would have left P19 UNCOVERED by P20's sweep while
      {!Pair_guard.pair_leaks} still reported [[]] - a green that verifies
      nothing, which is exactly the silent-vacuity class D1 and D2 both turned
-     out to be instances of. The roster below has TWELVE entries: those ten,
+     out to be instances of. The roster below had TWELVE entries: those ten,
      plus P19's family, plus P20's own [Rely_conditions.rely_family].
+     (P21 EXTENSION, 2026-07-29, BUILD-SPEC-P21 section 6: THIRTEEN now -
+     P21's [Internal_guarantee.guarantee_family] is appended and swept, and
+     the THIS-phase marker moved off the P20 label to t_p21_regression's
+     P21 entry, where the self-exclusion now lives.)
 
      P20's family is IN the roster (it is now a shipped suite, and the next
      phase must sweep against it) and is therefore excluded from the sweep's
@@ -74,6 +78,7 @@ module Ois = Anvil_assurance.Objects_in_store
 module Hi = Anvil_assurance.Helper_invariants
 module Mp = Anvil_assurance.Msg_provenance
 module Rely = Anvil_assurance.Rely_conditions
+module Ig = Anvil_assurance.Internal_guarantee
 
 let controller_id : int = Scenario.controller_id
 let cluster : Cluster.t = Scenario.vsts_cluster
@@ -168,11 +173,18 @@ let test_family_names_and_pairs () =
     "family sources = rely_sources, in order" Rely.rely_sources
     (sources_of family)
 
-(* ==== 3. THE D3 ROSTER - twelve suites, not ten =========================== *)
+(* ==== 3. THE D3 ROSTER - thirteen suites (twelve at P20, extended by P21) == *)
 
 (* Every list a shipped leg consumes, instantiated exactly as those legs
-   instantiate them. The first TEN are P19's roster verbatim; the last TWO are
-   the D3 fix.
+   instantiate them. The first TEN are P19's roster verbatim; the next TWO are
+   the D3 fix; the THIRTEENTH is the P21 extension (BUILD-SPEC-P21 section 6):
+   P21's [Internal_guarantee.guarantee_family] is appended so THIS file's
+   sweep measures P20's family against it, the THIS-phase marker moved off
+   the P20 label (P20 is now a PRIOR phase; the marker and the self-exclusion
+   position live in t_p21_regression now), and the committed label list below
+   reddens a verbatim copy in either direction. The sweep's own exclusion
+   still keys on [p20_label], because this exe's SUBJECT family is still
+   P20's - a family is never disjoint from itself.
 
    WHY D3 IS THE HIGHEST-RISK OF THE THREE COMMITTED-TEST DEFECTS: a missing
    roster entry does not fail loudly. [pair_leaks] against a shorter roster
@@ -185,8 +197,10 @@ let test_family_names_and_pairs () =
    the NEXT phase must sweep against it; the sweep below excludes it by label,
    since no family is disjoint from itself. *)
 
-let p20_label : string = "Rely_conditions.rely_family (P20, THIS phase)"
+let p20_label : string = "Rely_conditions.rely_family (P20)"
 let p19_label : string = "Msg_provenance.provenance_family (P19)"
+
+let p21_label : string = "Internal_guarantee.guarantee_family (P21)"
 
 let shipped_suites : (string * Invariants.invariant list) list =
   let vrs = Scenario.vrs ~desired:1 in
@@ -207,6 +221,7 @@ let shipped_suites : (string * Invariants.invariant list) list =
       Hi.helper_family ~cr:(Scenario.vsts ~desired ~vct:false ()) ~controller_id );
     (p19_label, Mp.provenance_family ~controller_id);
     (p20_label, family);
+    (p21_label, Ig.guarantee_family ~cr:vsts ~controller_id);
   ]
 
 (* The roster's LABELS, committed as a literal list: this is the assertion a
@@ -226,6 +241,7 @@ let committed_roster : string list =
     "Helper_invariants.helper_family (P18)";
     p19_label;
     p20_label;
+    p21_label;
   ]
 
 let others : (string * Invariants.invariant list) list =
@@ -248,13 +264,14 @@ let missing_from_roster (invs : Invariants.invariant list) :
 
 let test_roster_covers_p19_and_p20 () =
   Alcotest.(check (list string))
-    "D3: the roster is TWELVE suites - P19's ten PLUS provenance_family PLUS \
-     rely_family (a verbatim copy of P19's roster reddens here)"
+    "D3: the roster is THIRTEEN suites - P19's ten PLUS provenance_family \
+     PLUS rely_family PLUS P21's guarantee_family (a verbatim copy of a \
+     prior roster reddens here)"
     committed_roster
     (List.map
        (fun ((label, _) : string * Invariants.invariant list) -> label)
        shipped_suites);
-  Alcotest.(check int) "D3: eleven suites are swept (the self-entry is excluded)"
+  Alcotest.(check int) "D3: twelve suites are swept (the self-entry is excluded)"
     (List.length committed_roster - 1)
     (List.length others);
   (* COVERAGE, read off the LIVE records rather than off the labels: every
@@ -265,7 +282,12 @@ let test_roster_covers_p19_and_p20 () =
     []
     (missing_from_roster (Mp.provenance_family ~controller_id));
   Alcotest.(check (list (pair string string)))
-    "D3: every P20 rely member is covered by the roster" [] (missing_from_roster family)
+    "D3: every P20 rely member is covered by the roster" []
+    (missing_from_roster family);
+  Alcotest.(check (list (pair string string)))
+    "P21 extension: every P21 guarantee member is covered by the roster" []
+    (missing_from_roster
+       (Ig.guarantee_family ~cr:(Scenario.vsts ~desired:1 ()) ~controller_id))
 
 (* THE MASKING-TRAP GUARD (P14-P16/P18-P19 pattern). A P20 member found in ANY
    shipped suite means prior pins are no longer measuring what they claim (pin
@@ -310,8 +332,8 @@ let leaks_against (suites : (string * Invariants.invariant list) list) :
 
 let test_family_is_disjoint_from_shipped_suites () =
   Alcotest.(check (list string))
-    "no P20 rely member shares a name or source with any of the eleven other \
-     shipped suites (both argument orders, incl. P19's)"
+    "no P20 rely member shares a name or source with any of the twelve other \
+     shipped suites (both argument orders, incl. P19's and P21's)"
     []
     (leaks_against others);
   (* The sweep is SEEN red-capable: the same detector, run against the roster's
@@ -466,7 +488,8 @@ let () =
              pairs"
             `Quick test_family_names_and_pairs;
           Alcotest.test_case
-            "D3: the roster is TWELVE suites and really covers P19 and P20"
+            "D3: the roster is THIRTEEN suites and really covers P19, P20 \
+             and P21"
             `Quick test_roster_covers_p19_and_p20;
           Alcotest.test_case
             "family DISJOINT from every other shipped suite (Pair_guard, both \

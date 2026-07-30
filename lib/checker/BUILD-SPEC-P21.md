@@ -130,7 +130,7 @@ dispatch is wanted, it must be labelled a refactor guard and nothing more.
 | id | upstream | line | why excluded |
 | --- | --- | --- | --- |
 | E1 | `vsts_internal_guarantee_conditions` | `:522` | `forall vsts. G4(controller_id, vsts)`. On a single-CR scenario this COLLAPSES to G4 at the scenario CR, so shipping it would be G4 wearing a hat. Same scenario-conditional vacuity P20 recorded as its own E1. A two-controller / two-CR spine de-vacuizes it; that is a P22. |
-| E2 | `every_msg_from_vsts_controller_carries_vsts_key` | `:528` | **ALREADY SHIPPED** as P19's M1, cited to `helper_invariants.rs:1213`. P19's ledger flagged this exact name collision (its E2'). The build MUST re-read both upstream definitions and the shipped OCaml member and record whether they are semantically identical or merely near - P19 asserted "semantic duplicate" and that assertion has never been re-measured. |
+| E2 | `every_msg_from_vsts_controller_carries_vsts_key` | `:528` | **ALREADY SHIPPED** as P19's M1, cited to `helper_invariants.rs:1213`. P19's ledger flagged this exact name collision (its E2'). The build MUST re-read both upstream definitions and the shipped OCaml member and record whether they are semantically identical or merely near - P19 asserted "semantic duplicate" and that assertion has never been re-measured. **RE-MEASURED (build): SEMANTICALLY IDENTICAL**, not merely near. The two definitions differ by exactly one unfolding of the `pub open` spec fn `is_controller_id` (`message.rs:242-247`): quantifier, trigger, in-flight premise, conclusion, projection (`->Controller_1.kind`) and key comparison agree token-for-token (both even carry the same dead `let content` binding). Upstream certifies the identity itself with a one-assert bridge, `liveness/proof.rs:903-927` (direction B implies A, then `always_weaken`); the converse is the same single unfolding. The asymmetry is role, not semantics: `helper_invariants.rs:1213` is the PROVEN member (always-lemma `:1224-1260`, carried in `liveness/spec.rs`), while `:528` is only a bundle hypothesis (`predicate.rs:130`) whose truth derives from the bridge. So the shipped citation to `helper_invariants.rs:1213` is the better of the two names, and the exclusion ground stands. |
 | E3 | `local_pods_and_pvcs_are_bound_to_vsts` | `:606` | the CONTROLLER-LOCAL register. Needs the typed VSTS reconcile state, and the port's `Controller.ongoing_reconcile.local_state` is an untyped `Value.t` (`controller.mli:60`). Real plumbing, not a rendering choice. BANKED for P22. |
 | E4 | `..._with_key_in_local_state` | `:613` | helper of E3. |
 | E5 | `..._with_key` | `:640` | helper of E3; additionally constrains `pending_req_msg` and the `AfterListPod` step, so it needs step-level reconcile introspection the port does not expose either. |
@@ -288,3 +288,84 @@ forward reddens immediately - that assertion is its own guard.
    `ocamlformat` is NOT installed in that switch and all nine pre-existing dune
    files already report "needs promotion" - pre-existing committed state, do NOT
    promote.
+
+## 8. MEASURED (2026-07-28, throwaway probe `probe/zz_p21_probe.ml`; replica
+technique = t_p20_rely.ml:250-255 verbatim, bound/budgets read off the
+P12-P20 witness chain, never re-typed)
+
+**All five committed pins reproduced EXACTLY - the section-3 phase-STOP was
+never tripped:** L0 76, Lc 464, Ld 744, Lm 1976, L0v 116. Every leg CLEAN and
+DECISIVE; **red 0 on every member over every graph.**
+
+| leg | states | gate | G1 int/red | G2 int/red | G3 int/red | G4 int/red |
+| --- | --- | --- | --- | --- | --- | --- |
+| L0 | 76 | 16 | 4/0 | 0/0 | 4/0 | 16/0 |
+| Lc | 464 | 140 | 68/0 | 0/0 | 16/0 | 156/0 |
+| Ld | 744 | 32 | 24/0 | 0/0 | 8/0 | 64/0 |
+| Lm | 1976 | 336 | 24/0 | 0/0 | 200/0 | 368/0 |
+| L0v | 116 | replica-only | 8/0 | 0/0 | 4/0 | 28/0 |
+
+- **Prediction 1 CONFIRMED**: G1-G4 green on all five graphs.
+- **Prediction 2 CONFIRMED at the green level**: no red anywhere, so the
+  forbidden-kind arm never fired; the mutation matrix (MG1) is what makes that
+  green mean something.
+- **Prediction 3 CONFIRMED**: the family gate is non-zero on every leg
+  (16/140/32/336, and G4's interesting is 28 on the L0v replica). Unlike P20,
+  **L0/Lc/Ld are NOT vacuity rows** - the guarantee family's premise is
+  CONTROLLER-sourced traffic, which exists without any adversary. The
+  fault-dimension legs here measure whether faults can PROVOKE the reconciler
+  into an off-repertoire emission; they cannot.
+- **Prediction 4 REFUTED in both directions, recorded honestly.**
+  (a) **G2 (`get_then_delete`) is vacuous on ALL FIVE graphs**, not just L0:
+  `interesting = 0` everywhere. At `desired = 1` with no scale-down the
+  reconciler never reaches its delete steps
+  (v_stateful_set_reconciler.ml:734/:779). G2's green is honest vacuity
+  family-wide (the P20 PVC-arm class: disclosed, not narrowed away); its only
+  live witness would be a scale-down scenario (desired shrinks, or stored pods
+  exceed desired) - banked as a P22 candidate. Consequence for section 5:
+  **MG6 is predicted INERT on every committed graph** (its red witness is a
+  G2 premise that never fires); the row is still run, and an unexpectedly
+  moving pin there would be a real finding.
+  (b) **G3 fires on fault-free L0** (interesting 4): the rolling-update path
+  emits `Get_then_update_request` even in the fault-free run, against the
+  "plausibly zero on L0" lean.
+- **L0v is replica-only**: the leg threads no `?vct` (section 3's cut), and
+  its seed is built internally, so the 116-state row is the family evaluated
+  directly over the local replica of the vct:true zero-budget graph - the
+  exact t_p20_rely L0v pattern. Reported as such wherever the row is cited.
+
+### 8.1 Mutation matrix MEASURED (protocol: Edit apply / probe / Edit revert / `git diff --stat` empty, per row)
+
+Provenance, stated honestly: rows MG1-MG4 were run by the measurement agent,
+which was then killed by the session token limit BETWEEN MG5's apply and its
+probe run, leaving the MG5 mutant live in the tree (the exact
+die-between-apply-and-restore failure mode). The orphan was detected by
+`git status`, reverted by `Edit`, and every completed row's revert was
+verified `git diff --stat`-empty in the agent transcript before its numbers
+were salvaged. MG5-MG7 were completed inline afterwards.
+
+| row | leg outcome | violated (first) | pins (L0/Lc/Ld/Lm/L0v vs 76/464/744/1976/116) | member reds | verdict vs section-4/5 prediction |
+| --- | --- | --- | --- | --- | --- |
+| MG1 `Update_request` swap `:697` | REFUTED on all four legs | `no_interfering_request_between_vsts` | ALL FIVE MOVED: 72/452/736/1752/112 | G4 only: 4/16/8/200/4. G1=G2=G3=0 everywhere | **CONFIRMED** - the strictness row. G4 is not `G1&&G2&&G3`: no other member sees the forbidden kind |
+| MG2 `make_owner_references` -> `[]` | REFUTED on all four legs | `vsts_internal_guarantee_create_req` | 76 OK / 444 MOVED / 744 OK / 1928 MOVED / 116 OK | G1=G4: 8/80/32/208/8 | **CONFIRMED** (G1 RED, G4 via containment) |
+| MG3 `make_pvc` given an owner ref | all four legs CLEAN, pins OK | none (leg-invisible) | ALL FIVE UNMOVED on legs; L0v replica reds | L0v replica ONLY: G1 red=4, G4 red=4 (G2 0, G3 0) | **PARTLY REFUTED**: G1 RED confirmed but ONLY on the vct:true L0v replica (the leg's no-`?vct` cut makes the PVC arm dead on all four leg graphs), and G4 reds too, so ":575 only" was wrong twice. This row is the measured justification for keeping the replica-only fifth row |
+| MG4 non-invertible pod name `:377` | REFUTED on all four legs | `vsts_internal_guarantee_create_req` | 76 OK / 444 MOVED / 744 OK / 1928 MOVED / 116 OK | numerically identical to MG2 (G1=G4: 8/80/32/208/8; L0v G1 int 12 red 8) | **CONFIRMED** (G1 RED via `pod_name_match`); the MG2-identity is a datum: both mutants collapse to "created pod fails the same three-conjunct arm" |
+
+Violated-name ordering datum: MG2/MG4 report `violated = G1` (family order,
+first violated member wins); MG1 reports `violated = G4` (sole violated
+member). Both behaviors match `violated_of`'s documented family-order
+semantics.
+
+Rows completed inline after the agent death (same per-row protocol):
+
+| row | leg outcome | violated (first) | pins | member reds | verdict vs section-4/5 prediction |
+| --- | --- | --- | --- | --- | --- |
+| MG5 create namespace off-CR `:650` | **UNMEASURABLE: STATE-SPACE BLOW-UP** | n/a | n/a (no row ever flushed) | n/a | The probe ran 8h22m wall-clock at ~91% CPU (866 MB RSS, actively exploring, not wedged) without completing even L0, vs ~2 min for the full five-graph baseline; killed deliberately. Mechanism: pods created in the off-CR namespace are invisible to the reconciler's own list/get, so reconcile never converges and the bounded product explodes. The blow-up IS the row's datum: the mutant is behaviorally catastrophic long before any invariant is evaluated, and `:563`'s red remains formally unwitnessed at this bound |
+| MG6 wrong owner ref on `Get_then_delete` `:734` | all four legs CLEAN, ALL pins OK | none | 76/464/744/1976/116 all OK | zero everywhere; table numerically IDENTICAL to baseline | **REFUTED BY VACUITY**: section 5 predicted G2 RED, but G2 `interesting=0` on every graph (baseline section 8) means the `Delete_condemned` arm is dead code at desired=1 - the mutated request never enters any graph. INERT, the honest-vacuity reading; a G2-exercising scenario (scale-down) is P22 material |
+| MG7 family at `~controller_id:(id+1)` (probe-side, `probe/zz_p21_probe.ml` MG7 block) | replica evaluation over L0 and Lm | n/a | L0 76 / Lm 1976 (same graphs) | `interesting=0 red=0` for ALL FOUR members on both graphs | **CONFIRMED** - the premise-necessity row: every member keys on `controller_id`, so the family cannot be green-by-accident at the wrong id; `red=0` (not red=all) also confirms vacuous truth, not vacuous falsity |
+
+Post-matrix verification: the MG7 run doubled as the final pin re-check on the
+reverted tree - all five pins OK, all four legs clean and decisive, so the
+matrix left no residue. `git diff --stat` empty of tracked changes after every
+revert (MG5's revert performed by the main loop after the orphan detection;
+MG6's verified inline).
