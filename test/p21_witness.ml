@@ -202,16 +202,41 @@ let guarantee_cardinal : int = 4
 (* ==== the E-ledger cardinals (spec section 2.2) ============================
    [proof/internal_rely_guarantee.rs] has exactly NINE [pub open spec fn]
    ([rg -c 'pub open spec fn'] = 9, counted at build time). The partition is
-   TOTAL and DISJOINT: 4 shipped (G1 :562, G2 :581, G3 :589, G4 :544) + E1 1
-   (:522, the quantified closure - collapses to G4 on a single-CR scenario)
-   + E2 1 (:528 - ALREADY SHIPPED semantically as P19's M1 under its
-   [helper_invariants.rs:1213] citation; re-measured this phase:
-   SEMANTICALLY IDENTICAL, one [is_controller_id] unfolding apart) + E3-E5 3
-   (:606 / :613 / :640, the controller-LOCAL register - needs the typed VSTS
-   reconcile state the port does not expose). Shipped lines ASCENDING (G4's
-   :544 is lowest; upstream defines the StatePred before its helpers). *)
+   TOTAL and DISJOINT.
+
+   RE-PARTITIONED BY P23 (BUILD-SPEC-P23 §2.2), and this is a RE-PARTITION,
+   NOT A RED. P21 wrote 4 shipped + 5 excluded and ledgered E3-E5
+   (:606 / :613 / :640) as the controller-LOCAL register, excluded on the
+   ground that the port's [ongoing_reconcile.local_state] is an untyped
+   [Value.t] and the VSTS reconcile step is not exposed. Both halves are false
+   today ([pending_req_msg] is exposed at controller.mli:57 and the typed state
+   is reachable through [V_stateful_set_pack.unmarshal_state]), so P23 SHIPS
+   E4 :613 as L1 and E5 :640 as L2
+   ({!Anvil_assurance.Local_binding.binding_family}). The reversal was
+   PRE-AUTHORIZED in those words: BUILD-SPEC-P22.md:279-281 records that
+   t_p21_regression's clause "reds only if P23 ships E3-E5, deliberately".
+
+   The partition after P23 is 6 shipped + 3 excluded, still total and disjoint
+   at nine:
+     shipped 6 - G4 :544, G1 :562, G2 :581, G3 :589 (P21);
+                 L1 :613, L2 :640 (P23)
+     E1      1 - :522, the quantified closure; collapses to G4 on a single-CR
+                 scenario, so shipping it would be "G4 wearing a hat"
+     E2      1 - :528; ALREADY SHIPPED semantically as P19's M1 under its
+                 [helper_invariants.rs:1213] citation (re-measured at P21:
+                 SEMANTICALLY IDENTICAL, one [is_controller_id] unfolding
+                 apart)
+     E3      1 - :606, the LIFT of E5 over every VSTS-kind key in
+                 [ongoing_reconciles]; every shipped scenario is single-CR, so
+                 it collapses to L2-at-the-scenario-key - "L2 wearing a hat",
+                 the exact ground P21 used for its own E1. A two-CR spine
+                 de-vacuizes it; that is a later phase.
+   Shipped lines ASCENDING (G4's :544 is lowest; upstream defines the StatePred
+   before its helpers). [ledger_e3_e5_lines] was RENAMED to [ledger_e3_lines]
+   rather than shrunk in place, so a stale reader of the old name fails to
+   compile instead of silently reading a narrower bucket. *)
 let ledger_spec_fn_count : int = 9
-let ledger_shipped_lines : int list = [ 544; 562; 581; 589 ]
+let ledger_shipped_lines : int list = [ 544; 562; 581; 589; 613; 640 ]
 let ledger_e1_lines : int list = [ 522 ]
 let ledger_e2_lines : int list = [ 528 ]
-let ledger_e3_e5_lines : int list = [ 606; 613; 640 ]
+let ledger_e3_lines : int list = [ 606 ]

@@ -31,7 +31,16 @@
      now keys on the P21 label (a family is never disjoint from itself; the
      self-entry doubles as the sweep's red-capability control).
 
-   - THE DISJOINTNESS SWEEP: [guarantee_family] against the other TWELVE
+     EXTENDED AGAIN TO FOURTEEN BY P23 (BUILD-SPEC-P23 section 6), and that
+     edit is load-bearing rather than cosmetic. This file's roster is a
+     LITERAL list, so a family shipped by a later phase is NOT swept
+     automatically. Until P23 added its entry, the E-LEDGER REVERSAL CLAUSE
+     below was passing VACUOUSLY: L1 :613 and L2 :640 were already shipped
+     and the clause could not see them, so its green meant nothing. A green
+     that was never made to sweep the new members is worthless, and that is
+     precisely the failure mode this project keeps producing.
+
+   - THE DISJOINTNESS SWEEP: [guarantee_family] against the other THIRTEEN
      roster suites via {!Pair_guard.pair_leaks}, run in BOTH argument
      orders. The detector is either-component (a shared NAME or a shared
      SOURCE is a hit), so one order already covers both leak directions;
@@ -39,17 +48,39 @@
 
    - THE E-LEDGER REVERSAL CLAUSE, over the WHOLE roster (the D2 lesson:
      a line ledgered as EXCLUDED could be shipped by some OTHER suite while
-     the family-local ledger stays green). Every
-     [proof/internal_rely_guarantee.rs] line cited anywhere in the thirteen
-     suites is collected and held to be exactly the four shipped ones; a
-     ledgered-excluded line (E1 :522, E2 :528, E3-E5 :606/:613/:640)
-     appearing anywhere reddens and RE-OPENS the exclusion. E2's :528
-     carries a special reading, disclosed: it is ALREADY SHIPPED
-     semantically as P19's M1 under its [helper_invariants.rs:1213]
-     citation (re-measured this phase: SEMANTICALLY IDENTICAL, one
-     [is_controller_id] unfolding apart, bridged by upstream itself at
-     liveness/proof.rs:903-927), so a :528 citation appearing would be a
-     name-collision with M1 as well as a ledger reversal.
+     the family-local ledger stays green). This is the SINGLE ASSERTION SITE
+     for the whole-tree ledger sweep and it stays here (the convention
+     t_p22_regression.ml:93-96 names); t_p23_regression pins the ledger's
+     CONSTANTS but does not duplicate this sweep. Every
+     [proof/internal_rely_guarantee.rs] line cited anywhere in the fourteen
+     suites is collected and held to be exactly the SIX shipped ones -
+     G1-G4 plus P23's L1 :613 and L2 :640 - and a ledgered-excluded line
+     (E1 :522, E2 :528, E3 :606) appearing anywhere reddens and RE-OPENS the
+     exclusion. E2's :528 carries a special reading, disclosed: it is
+     ALREADY SHIPPED semantically as P19's M1 under its
+     [helper_invariants.rs:1213] citation (re-measured at P21: SEMANTICALLY
+     IDENTICAL, one [is_controller_id] unfolding apart, bridged by upstream
+     itself at liveness/proof.rs:903-927), so a :528 citation appearing
+     would be a name-collision with M1 as well as a ledger reversal.
+
+   - THE RE-PARTITION IS NOT A RED, AND THAT WAS COMMITTED IN ADVANCE.
+     BUILD-SPEC-P22.md:279-281 states verbatim that this clause "reds only if
+     P23 ships E3-E5, deliberately". P23 ships E4 :613 and E5 :640 and leaves
+     E3 :606 excluded (it is the LIFT of E5 over every VSTS-kind key, so on a
+     single-CR scenario it collapses to "L2 wearing a hat"). The buckets in
+     {!P21_witness} moved with it: [ledger_shipped_lines] gained :613/:640 and
+     [ledger_e3_e5_lines] became [ledger_e3_lines] = [[606]].
+
+   - THE BARE-SOURCE FIREWALL (BUILD-SPEC-P23 section 5, MB8). The clause's
+     negative form - "no EXCLUDED line is shipped" - CANNOT SEE AN ABSENT
+     MEMBER: [line_of_source] parses everything after the LAST colon, so a
+     source carrying a parenthetical qualifier returns [None], the member
+     drops out of [roster_guarantee_lines], and the filter passes on a
+     shorter list. Three assertions close that: the count of prefixed sources
+     that PARSE equals the count that BEAR the prefix, that count equals the
+     ledger's shipped cardinal, and the P23 lines are asserted PRESENT
+     positively. t_p23_mutation exhibits the qualifier returning [None], so
+     the firewall is not merely asserted to have teeth.
 
    ---- what it does NOT do (anti-duplication, the P15-P20 rationale) -------
 
@@ -77,6 +108,7 @@ module Hi = Anvil_assurance.Helper_invariants
 module Mp = Anvil_assurance.Msg_provenance
 module Rely = Anvil_assurance.Rely_conditions
 module Ig = Anvil_assurance.Internal_guarantee
+module Lb = Anvil_assurance.Local_binding
 
 let controller_id : int = Scenario.controller_id
 let cluster : Cluster.t = Scenario.vsts_cluster
@@ -191,11 +223,13 @@ let test_family_names_and_pairs () =
   Alcotest.(check int) "guarantee_family cardinal"
     P21_witness.guarantee_cardinal (List.length family)
 
-(* ==== 3. THE ROSTER - thirteen suites, and the self-exclusion MOVED ======= *)
+(* ==== 3. THE ROSTER - fourteen suites, and the self-exclusion MOVED ======= *)
 
 (* Every list a shipped leg consumes, instantiated exactly as those legs
    instantiate them. The first TWELVE are t_p20_regression's roster (its
-   D3 form); the THIRTEENTH is P21's own family.
+   D3 form); the THIRTEENTH is P21's own family; the FOURTEENTH is P23's
+   binding register, added by that phase so the E-ledger clause below actually
+   sweeps it (without it the clause is green about nothing).
 
    THE MOVE (spec section 6): the P20 entry is now IN the swept set - it
    stopped being the self-entry when P20 stopped being the head phase - and
@@ -210,6 +244,17 @@ let p20_label : string = "Rely_conditions.rely_family (P20)"
 
 let p21_label : string =
   "Internal_guarantee.guarantee_family (P21, THIS phase)"
+
+(* P23's register, ADDED TO THIS ROSTER AND NOT ONLY TO t_p23_regression's,
+   and this is the load-bearing half of the P23 edit. The E-ledger reversal
+   clause below sweeps [roster_pairs], which is built from THIS literal list.
+   A new family that is not in it is not swept, so before this entry existed
+   the clause was GREEN while L1 :613 and L2 :640 were already shipped - a pin
+   passing VACUOUSLY, this project's named failure mode. The clause is the
+   single assertion site for the whole-tree ledger sweep
+   (t_p22_regression.ml:93-96 names the convention), so the roster it sweeps
+   has to be the whole roster. *)
+let p23_label : string = "Local_binding.binding_family (P23)"
 
 let shipped_suites : (string * Invariants.invariant list) list =
   let vrs = Scenario.vrs ~desired:1 in
@@ -231,6 +276,7 @@ let shipped_suites : (string * Invariants.invariant list) list =
     (p19_label, Mp.provenance_family ~controller_id);
     (p20_label, Rely.rely_family);
     (p21_label, family);
+    (p23_label, Lb.binding_family ~cr:vsts ~controller_id);
   ]
 
 (* The roster's LABELS, committed as a literal list: a verbatim copy of the
@@ -251,6 +297,7 @@ let committed_roster : string list =
     p19_label;
     p20_label;
     p21_label;
+    p23_label;
   ]
 
 let others : (string * Invariants.invariant list) list =
@@ -273,15 +320,17 @@ let missing_from_roster (invs : Invariants.invariant list) :
 
 let test_roster_covers_p19_p20_and_p21 () =
   Alcotest.(check (list string))
-    "the roster is THIRTEEN suites - t_p20_regression's twelve PLUS \
-     guarantee_family (a verbatim copy of the P20 roster reddens here)"
+    "the roster is FOURTEEN suites - t_p20_regression's twelve PLUS \
+     guarantee_family PLUS P23's binding_family (a verbatim copy of the P20 \
+     roster reddens here, and so does a P23 landing that forgot this entry - \
+     see the E-ledger clause below, which sweeps this very list)"
     committed_roster
     (List.map
        (fun ((label, _) : string * Invariants.invariant list) -> label)
        shipped_suites);
   Alcotest.(check int)
-    "twelve suites are swept (the P21 self-entry is excluded; the P20 entry \
-     is IN the swept set now)"
+    "thirteen suites are swept (the P21 self-entry is excluded; the P20 and \
+     P23 entries are IN the swept set)"
     (List.length committed_roster - 1)
     (List.length others);
   (* COVERAGE, read off the LIVE records rather than off the labels: every
@@ -295,7 +344,16 @@ let test_roster_covers_p19_p20_and_p21 () =
     (missing_from_roster Rely.rely_family);
   Alcotest.(check (list (pair string string)))
     "every P21 guarantee member is covered by the roster" []
-    (missing_from_roster family)
+    (missing_from_roster family);
+  (* THE P23 COVERAGE ROW. Its job is not disjointness (t_p23_regression owns
+     that) but PRESENCE: if the P23 entry above were dropped, the E-ledger
+     clause below would go back to sweeping a roster that cannot see :613 or
+     :640 and would pass while the exclusion is in fact re-opened. *)
+  Alcotest.(check (list (pair string string)))
+    "every P23 binding member is covered by the roster - the entry the ledger \
+     clause depends on is really there"
+    []
+    (missing_from_roster (Lb.binding_family ~cr:(Scenario.vsts ~desired ()) ~controller_id))
 
 (* THE MASKING-TRAP GUARD (P14-P16/P18-P20 pattern). A P21 member found in
    ANY shipped suite means prior pins are no longer measuring what they
@@ -320,8 +378,8 @@ let leaks_against (suites : (string * Invariants.invariant list) list) :
 
 let test_family_is_disjoint_from_shipped_suites () =
   Alcotest.(check (list string))
-    "no P21 guarantee member shares a name or source with any of the twelve \
-     other shipped suites (both argument orders, incl. P20's)"
+    "no P21 guarantee member shares a name or source with any of the thirteen \
+     other shipped suites (both argument orders, incl. P20's and P23's)"
     []
     (leaks_against others);
   (* The sweep is SEEN red-capable: the same detector, run against the
@@ -361,44 +419,99 @@ let line_of_source (s : string) : int option =
         (sub_opt s (i + 1) (String.length s - i - 1))
         int_of_string_opt)
 
-(* Every proof/internal_rely_guarantee.rs line cited ANYWHERE in the roster,
-   deduped and ascending - read off the live records, never re-typed. *)
-let roster_guarantee_lines : int list =
-  List.sort_uniq Int.compare
+(* Every proof/internal_rely_guarantee.rs SOURCE cited anywhere in the roster,
+   deduped - read off the live records, never re-typed. Kept as a binding of
+   its own so the BARE-SOURCE FIREWALL below can compare the count of sources
+   that BEAR the prefix against the count that PARSE. *)
+let roster_guarantee_sources : string list =
+  List.sort_uniq String.compare
     (List.filter_map
        (fun ((_, src) : string * string) ->
-         Option.bind
-           (if String.starts_with ~prefix:guarantee_prefix src then Some src
-            else None)
-           line_of_source)
+         if String.starts_with ~prefix:guarantee_prefix src then Some src
+         else None)
        roster_pairs)
+
+(* ...and the LINES those sources parse to, deduped and ascending. *)
+let roster_guarantee_lines : int list =
+  List.sort_uniq Int.compare (List.filter_map line_of_source roster_guarantee_sources)
 
 let ledgered_excluded_lines : int list =
   P21_witness.ledger_e1_lines @ P21_witness.ledger_e2_lines
-  @ P21_witness.ledger_e3_e5_lines
+  @ P21_witness.ledger_e3_lines
 
 let test_e_ledger_reversal_clause () =
   Alcotest.(check bool)
     "every G1-G4 source names proof/internal_rely_guarantee.rs" true
     (List.for_all (String.starts_with ~prefix:guarantee_prefix)
        Ig.guarantee_sources);
+  Alcotest.(check bool)
+    "every P23 binding source names proof/internal_rely_guarantee.rs too" true
+    (List.for_all (String.starts_with ~prefix:guarantee_prefix)
+       Lb.binding_sources);
+  (* THE POSITIVE CLAUSE, and why its two lines are typed as COMMITTED LITERALS
+     rather than read back out of [Lb.binding_sources]. The self-derived shape -
+     [List.filter_map line_of_source Lb.binding_sources] on BOTH sides - takes
+     its expected value from the same expression it tests, so the MB8 qualifier
+     applied to L1 ALONE makes :613 parse to [None] on both sides at once: the
+     row compares [640] with [640] and passes GREEN while the member is
+     invisible to this entire clause. That is precisely the vacuously-green
+     shape the positive form was added to prevent. Against literals the same
+     mutant leaves an expected [613; 640] beside an actual [640] and the row
+     REDDENS, which is what makes local_binding.mli's "both PRESENT" disclosure
+     something an assertion actually names. It runs BEFORE the count firewall
+     below deliberately: Alcotest reports only the first failing row of a case,
+     and "expected [613; 640], received [640]" names the member that went
+     invisible, where the firewall's "6 vs 5" only says one of them did. *)
+  Alcotest.(check (list int))
+    "the P23 members' lines 613 and 640 are PRESENT in the roster's parsed \
+     lines - the POSITIVE form, written against COMMITTED LITERALS because the \
+     negative excluded-lines filter below cannot see an ABSENT member and a \
+     self-derived expected value cannot see a QUALIFIED one"
+    [ 613; 640 ]
+    (List.filter (fun (n : int) -> List.mem n roster_guarantee_lines) [ 613; 640 ]);
+  (* ---- THE BARE-SOURCE FIREWALL, and why it is a COUNT ---------------------
+     [line_of_source] is [String.rindex_opt ':'] fed to [int_of_string_opt], so
+     a source carrying a parenthetical qualifier (the vsts_invariants.ml:217
+     style) parses to [None], DROPS OUT of [roster_guarantee_lines], AND THE
+     NEGATIVE CLAUSE BELOW STILL PASSES - a member can go invisible without
+     reddening anything. The equality of the two counts is what makes that
+     LOUD: a dropped-out member leaves a prefixed source with no line. The
+     second row anchors the surviving count to the ledger's own cardinal, so
+     "all of them parsed" cannot be satisfied by a roster that lost the entry
+     entirely. t_p23_mutation's MB8 row is the exhibit that these have teeth. *)
+  Alcotest.(check int)
+    "BARE-SOURCE FIREWALL: every internal_rely_guarantee.rs source in the \
+     roster PARSES to a line - a parenthetical qualifier makes the member \
+     SILENTLY invisible to this whole clause"
+    (List.length roster_guarantee_sources)
+    (List.length roster_guarantee_lines);
+  Alcotest.(check int)
+    "...and the surviving count IS the ledger's shipped cardinal (six after \
+     the P23 re-partition), so a member that vanished from the roster rather \
+     than from the parser reddens here too"
+    (List.length P21_witness.ledger_shipped_lines)
+    (List.length roster_guarantee_lines);
   Alcotest.(check (list int))
     "the ONLY internal_rely_guarantee.rs lines shipped anywhere in the \
-     thirteen-suite roster are G1-G4's"
+     FOURTEEN-suite roster are G1-G4's and P23's L1 :613 / L2 :640 (the \
+     re-partition: 4 shipped + 5 excluded -> 6 shipped + 3 excluded, \
+     PRE-AUTHORIZED by BUILD-SPEC-P22.md:279-281)"
     P21_witness.ledger_shipped_lines roster_guarantee_lines;
   Alcotest.(check (list int))
-    "no line ledgered as EXCLUDED (E1 :522 / E2 :528 / E3-E5 \
-     :606/:613/:640) is shipped by any suite - a hit RE-OPENS the exclusion \
-     (and for :528 would also collide with P19's M1, its semantic twin)"
+    "no line ledgered as EXCLUDED (E1 :522 / E2 :528 / E3 :606) is shipped by \
+     any suite - a hit RE-OPENS the exclusion (and for :528 would also collide \
+     with P19's M1, its semantic twin; E3 :606 is the LIFT of E5, which \
+     collapses to 'L2 wearing a hat' on a single-CR scenario)"
     []
     (List.filter
        (fun (n : int) -> List.mem n roster_guarantee_lines)
        ledgered_excluded_lines);
   (* The ledger is still TOTAL and DISJOINT at the file's measured cardinal
-     (NINE pub open spec fn, counted at build time; 4 shipped + 5 excluded). *)
+     (NINE pub open spec fn, counted at build time; 6 shipped + 3 excluded
+     after the P23 re-partition). *)
   Alcotest.(check int)
     "shipped + ledgered = the file's 9 pub open spec fn, no orphan and no \
-     double-ledgering"
+     double-ledgering (6 + 1 + 1 + 1)"
     P21_witness.ledger_spec_fn_count
     (List.length
        (List.sort_uniq Int.compare
@@ -422,7 +535,8 @@ let () =
              source) pairs"
             `Quick test_family_names_and_pairs;
           Alcotest.test_case
-            "the roster is THIRTEEN suites and really covers P19, P20 and P21"
+            "the roster is FOURTEEN suites and really covers P19, P20, P21 \
+             and P23 (the entry the ledger clause sweeps)"
             `Quick test_roster_covers_p19_p20_and_p21;
           Alcotest.test_case
             "family DISJOINT from every other shipped suite (Pair_guard, \
@@ -432,8 +546,9 @@ let () =
       ( "exclusion_pins",
         [
           Alcotest.test_case
-            "E-ledger reversal clause: no ledgered-excluded \
-             internal_rely_guarantee line is shipped anywhere"
+            "E-ledger reversal clause (re-partitioned 4+5 -> 6+3): the roster \
+             ships exactly G1-G4 + L1 :613 + L2 :640, every prefixed source \
+             PARSES (the bare-source firewall), and no excluded line appears"
             `Quick test_e_ledger_reversal_clause;
         ] );
     ]

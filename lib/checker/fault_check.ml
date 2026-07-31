@@ -1146,3 +1146,66 @@ let check_scale_down_under_faults ?(depth = default_depth)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
+
+(* ---- P23: the controller-LOCAL binding leg ---- *)
+
+(* P23 leg (BUILD-SPEC-P23 §3): the NEW controller-local binding register
+   ({!Local_binding.binding_family}, L1 :613 / L2 :640) over the P22 scale-down
+   graph family. {!check_scale_down_under_faults}'s clone with exactly ONE line
+   changed - the [invs] binding - so the seed
+   ({!Scenario.vsts_seed_with_pods}), the CR ({!Scenario.vsts}), the depth, the
+   {!faulted_successors} product, the {!violated_of} naming and the
+   [require_fault]/{!budget_fault_taken} gate are all the sibling leg's,
+   verbatim.
+
+   THE FAMILY IS ASSERTED ALONE. Not unioned with
+   [Internal_guarantee.guarantee_family], not with
+   [Invariants.cluster_structural], not with [Invariants.always], not with
+   [Vsts_invariants.always]. This is the P15 MASKING TRAP, already forbidden
+   in-tree at :476-482: [~violated] is [violated_of invs] resolving through
+   [Invariants.first_violated] (:249-258 -> invariants.ml:1046), which is the
+   FIRST match in LIST ORDER, so a unioned member masks the phase headline and
+   the leg never evaluates the member the phase exists to measure. "Union" in
+   the gate below means the OR over the register's OWN two members
+   ([List.exists ... invs]), never a union of two families. A [violated] naming
+   a P21 or a structural member on this leg means the lists were unioned
+   somewhere: a harness bug, not a finding.
+
+   PIN SAFETY, structural rather than hoped for. [run_leg] calls
+   [Model_check.explore] with only [~depth ~successors ~equal ~hash ~init]
+   (:274-279) and [explore] takes no invariant argument
+   (model_check.mli:57-63); [fault_metadata] (:202-233) reads only
+   [~bound ~budget ~cluster ~controller_id]. GRAPHS ARE FAMILY-BLIND, so a new
+   leg that reuses [(seed, bound, budget, depth)] cannot move any committed
+   graph. The bound is the CALLER's own ([P23_witness.p23_bound], derived from
+   [P22_witness.p22_bound]); no committed pin input - [p13_bound], [p21_bound],
+   [p22_bound], [Bound.default], [Scenario.vsts_seed_faults],
+   [Scenario.vsts_cluster], [Scenario.controller_id],
+   [Cluster.enabled_successors], {!faulted_equal}/{!faulted_hash} - is touched.
+   A moved pin is a phase-STOP, never a retune. *)
+let check_local_binding_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(ordinals : int list)
+    ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+      ~pod_monkey ()
+  in
+  let cr = Scenario.vsts ~desired () in
+  let invs = Local_binding.binding_family ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))

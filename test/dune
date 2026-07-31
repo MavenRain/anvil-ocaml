@@ -17,7 +17,8 @@
    t_p17_mutation t_p18_helper t_p18_mutation t_p18_regression
    t_p19_provenance t_p19_mutation t_p19_regression t_p20_rely
    t_p20_mutation t_p20_regression t_p21_guarantee t_p21_mutation
-   t_p21_regression t_p22_scaledown t_p22_mutation t_p22_regression)
+   t_p21_regression t_p22_scaledown t_p22_mutation t_p22_regression
+   t_p23_local_binding t_p23_mutation t_p23_regression)
  (libraries anvil_support anvil_k8s_objects anvil_state_machine anvil_reconciler
    anvil_cluster anvil_controllers anvil_assurance anvil_checker anvil_proof
    anvil_exec comp_cat alcotest qcheck-core qcheck-alcotest)

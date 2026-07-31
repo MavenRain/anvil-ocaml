@@ -2010,3 +2010,155 @@ val check_scale_down_under_faults :
     committed rows' exact shape. The five committed pins
     76 / 464 / 744 / 1976 / 116 re-asserted UNMOVED by t_p21_guarantee on
     the post-B3 tree. *)
+
+val check_local_binding_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  ordinals:int list ->
+  require_fault:bool ->
+  fault_report
+(** {b P23 LEG} (BUILD-SPEC-P23 §3): the NEW controller-LOCAL binding register
+    ({!Local_binding.binding_family} - L1
+    [local_pods_and_pvcs_are_bound_to_vsts_with_key_in_local_state],
+    internal_rely_guarantee.rs:613; L2
+    [local_pods_and_pvcs_are_bound_to_vsts_with_key], :640) checked by
+    reachability over the fault product of the P22 scale-down graph family.
+
+    Where P21/P22 asked what the VSTS controller puts ON THE WIRE, this leg asks
+    what it is HOLDING: the pods the reconcile round decoded into [needed] and
+    [condemned] are bound to the CR whose key the round runs under, and the
+    round parked at [AfterListPod] really is parked on a pod-[ListRequest] in
+    the CR's namespace with every matching ok response carrying only objects of
+    that namespace. It retires P21's E3/E4/E5 deferral
+    (internal_guarantee.mli:167-171) and re-partitions the file's nine
+    [pub open spec fn] from 4 shipped + 5 excluded to 6 shipped + 3 excluded.
+
+    {b WHAT A RED MEANS HERE.} The {!check_internal_guarantee_under_faults}
+    reading, carried over: upstream DISCHARGES both members
+    (internal_rely_guarantee.rs:668's preservation lemma), so a red is a
+    {b FIDELITY DIVERGENCE in the port} - the port's own reconciler decoded, or
+    parked on, a local state upstream proves it never holds - and a real
+    finding, never environment noise.
+
+    {b THE FAMILY IS ASSERTED ALONE.} Not unioned with
+    {!Internal_guarantee.guarantee_family}, not with
+    [Invariants.cluster_structural], not with [Invariants.always], not with
+    [Vsts_invariants.always]. This is the P15 MASKING TRAP, forbidden in-tree at
+    fault_check.ml:476-482: [~violated] resolves through
+    [Invariants.first_violated] (invariants.ml:1046), which returns the FIRST
+    member in LIST ORDER, so a unioned member masks the phase headline and the
+    leg never evaluates the member the phase exists to measure. "Union" in the
+    gate below means the OR over the register's OWN two members, never a union
+    of two families. A [violated] naming a P21 or a structural member on this
+    leg means the lists were unioned somewhere: a harness bug, not a finding.
+
+    {b PER-MEMBER ATTRIBUTION IS NOT AVAILABLE FROM THIS LEG.} L2's [holds]
+    STRICTLY IMPLIES L1's (upstream :642 calls E4), and [first_violated] is
+    first-in-list-order, so for ANY shared-conjunct failure L1 is the member
+    named and L2 looks green. Attribution requires per-member red/[interesting]
+    counts from a REPLICA (the t_p21_guarantee.ml:193-237 technique), not this
+    report's [violated] name. The containment is deliberate and its rationale is
+    in {!Local_binding}'s interface, not repeated here.
+
+    {b Shape:} {!check_scale_down_under_faults}'s clone with exactly ONE line
+    changed, the family binding - seed
+    [Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+    ~pod_monkey ()], CR [Scenario.vsts ~desired ()], same [default_depth], same
+    {!faulted_successors} product, same {!violated_of} naming, same
+    [require_fault]/{!budget_fault_taken} gate. The bound is the CALLER's own
+    ([P23_witness.p23_bound], derived from [P22_witness.p22_bound]).
+
+    {b PIN SAFETY, structural rather than hoped for.} [run_leg] calls
+    [Model_check.explore] with only [~depth ~successors ~equal ~hash ~init]
+    (fault_check.ml:274-279) and [explore] takes no invariant argument
+    (model_check.mli:57-63); [fault_metadata] (ml:202-233) reads only
+    [~bound ~budget ~cluster ~controller_id]. {b Graphs are family-blind}, so
+    this leg, reusing the P22 [(seed, bound, budget, depth)], cannot move any
+    committed graph. No committed pin input ([p13_bound], the P13-P21 seeds,
+    [Scenario.vsts_cluster], [Scenario.vsts_seed_faults],
+    {!faulted_equal}/{!faulted_hash}) is touched. The committed pins that must
+    come back BYTE-IDENTICAL are 76 / 464 / 744 / 1976 / 116 (P13-P21) and
+    88 / 808 / 1144 / 10216 with gates 20 / 276 / 96 / 2080 (P22). A moved pin
+    is a phase-STOP, never a retune.
+
+    {b PRECONDITION ON [~ordinals] - the CALLER's obligation}, inherited
+    UNCHANGED from {!check_scale_down_under_faults} because the seed builder is
+    the same: [ordinals] must be {b DISTINCT} and each element {b >= [desired]}.
+    This function does NOT check that; it forwards [~ordinals] to
+    {!Scenario.vsts_seed_with_pods} unchecked, and that builder degrades
+    SILENTLY. Discharge it with {!Scenario.vsts_seed_pods_intact}. {b A second,
+    P23-SPECIFIC caveat on that predicate:} the [~desired:1 ~ordinals:[0;1]]
+    instantiation falls OUTSIDE it - scenario.ml:495-517 requires every requested
+    ordinal be [>= replicas], which ordinal 0 is not - so it needs its OWN
+    integrity check, never a reuse of this one. That instantiation was MEASURED
+    (BN0, BUILD-SPEC-P23 §8.4: its own integrity check written and passing for
+    both pods, fixpoint at depth 25, 88 states, CLEAN) and is deliberately {b NOT
+    shipped as a leg}: it existed to de-vacuize L1's needed conjunct, which §8.3
+    measures live without it, so shipping it would add a pin and a seed-integrity
+    obligation for no assurance. The caveat stands for any FUTURE caller.
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on the
+    sibling legs: [false] counts states where SOME member's [interesting] fires;
+    [true] additionally requires {!budget_fault_taken}.
+
+    {b HONEST-VACUITY DISCIPLINE: both predictions were committed BEFORE
+    measurement, and BOTH ARE NOW SETTLED} (BUILD-SPEC-P23 §4 predictions 5 and
+    6, resolved in §8.3 and §8.5). {b Prediction 5, that L1's NEEDED forall is
+    vacuous on the shipped [~desired:1 ~ordinals:[1]] instantiation, is
+    REFUTED:} the port re-reconciles, so a later round re-lists the pods and
+    [partition_pods] puts the already-created pod-0 into the needed slot as
+    [Some]. MEASURED needed-witness states {b 20 / 200 / 208 / 3616}. {b
+    Prediction 6, on L2's INNER forall, is CONFIRMED live} on every graph:
+    {b 8 / 60 / 48 / 816} states park at [After_list_pod] with a pending request
+    and a matching ok [List_response] in flight. Neither conjunct is excluded and
+    neither carries a vacuity pin. The per-member floors still live in the TESTS,
+    per member, never in this leg's union gate - a union gate cannot tell a live
+    member from a sleeping one.
+
+    {b MEASURED} (BUILD-SPEC-P23 §8.1, §8.11; the pins themselves live in
+    test/p23_witness.ml, single-sourced, and this block is prose quoting them,
+    never a second assertion site). Four legs at
+    [~desired:1 ~ordinals:[1] ~depth:40] over [P23_witness.p23_bound]: every one
+    CLEAN and DECISIVE with [violated] = [<none>] and per-member red {b 0} for
+    BOTH members on ALL four graphs.
+
+    - {b States} BL0 88, BLc 808, BLd 1144, BLm 10216 - P22's counts exactly,
+      which is prediction 8 CONFIRMED and the family-blindness argument above
+      turned into a measurement rather than left as reasoning.
+    - {b Gate counts} (this leg's union over its OWN two members)
+      {b 68 / 560 / 816 / 7920}. UNPREDICTED, as §4 said, and NOT derivable from
+      P22's 20 / 276 / 96 / 2080; they are far LARGER, which is the binding
+      family's premises being cheaper to satisfy than G1-G4's, {e not} a stronger
+      register. On BL0 the gate decomposes as L1 only 52, L2 only 16, BOTH 0:
+      the two premises are disjoint there and neither member dominates.
+    - {b Per-member [interesting]}, from the REPLICA (never this report's
+      [violated] name): L1 {b 52 / 516 / 664 / 6496}, L2
+      {b 16 / 112 / 288 / 1560}. The replica's [Mc.states_seen] was asserted
+      equal to the leg's own [states] before any count was read, on every graph.
+    - {b Decoded ongoing states} 76 / 680 / 1056 / 8872 with {b decode failures
+      0 / 0 / 0 / 0}, and {b decoded states with a non-empty [pvcs] 0 / 0 / 0 /
+      0}.
+    - {b The thirteen committed pins came back BYTE-IDENTICAL}, twice: at
+      measurement and again after the mutation matrix was restored. 76 / 464 /
+      744 / 1976 / 116 and 88 / 808 / 1144 / 10216 with gates 20 / 276 / 96 /
+      2080. No pin moved.
+
+    {b RED CAPABILITY OF THIS LEG, MEASURED (§8.10).} The matrix RAN, so these
+    greens are not greens of unknown sensitivity. A wrong-namespace pod list
+    (MB1) flips BL0 CLEAN -> REFUTED naming L2; negating L2's unique step
+    conjunct (X1) and negating L1's body (X2) each flip it REFUTED naming their
+    member with the graph pins UNMOVED; three coordinated reconciler edits
+    (MB2-b) flip it REFUTED naming L1 with L1 red 32. The attribution hazard
+    disclosed above was then measured under MB2-b: L1 [interesting] 64 / red 32,
+    L2 [interesting] 16 / red {b 0} while L2's UNGATED [holds] is false at the
+    same 32 states, so per-member attribution off this leg's [violated] name
+    would have been wrong in exactly the predicted direction. Two rows SURVIVED
+    by design (MB4, the wrong-namespace [Get_then_delete] trap, and X3, the
+    semantically neutral conjunct swap), and one row survived at graph level
+    because it mutates a branch the measured zero decode failures make dead
+    (MB6), which is closed by a UNIT row in [t_p23_mutation] rather than left
+    disclosed. *)
