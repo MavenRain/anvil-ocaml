@@ -390,6 +390,217 @@ let vsts_seed ~desired ~fair : Cluster.cluster_state =
   vsts_seed_faults ~desired ~crash:(not fair) ~req_drop:(not fair)
     ~pod_monkey:(not fair) ()
 
+(* {!vsts_seed_faults} plus one hand-built surplus Pod per element of
+   [ordinals] (P22): the CR create is byte-for-byte the [vsts_seed_faults]
+   chain (server stamps uid 1), then the pod creates are FOLDED over
+   [ordinals], each a REAL [Api_server.handle_create_request] threading the
+   api-server state; every response is discarded by design (seed
+   construction, not protocol) and [vsts_seed_pods_intact] below is the
+   ASSERTION that recovers what the discard drops.
+
+   ONE READ OF THE LIVE CR SUPPLIES BOTH THE OWNER REF AND THE PARENT NAME
+   (P22 review finding F3, second reviewer's arm): the stored CR is looked up
+   at [vsts_ref], unmarshalled, and passed through
+   [V_stateful_set.controller_owner_ref] - which COPIES [metadata.name] into
+   the ref's [name] field (v_stateful_set.ml:173-184) - so the pod's parent
+   name is that very field and the pod name can NEVER drift from the CR the
+   reconciler reads (the former hardcoded ["vsts1"] could). The singleton
+   owner-ref list replicates the reconciler's unexported
+   [make_owner_references] (v_stateful_set_reconciler.ml:218-220), so its uid
+   is the SERVER-STAMPED uid by construction, never forged (a mismatch would
+   make the pod GC-orphaned, builtin_controllers.ml:64-81, and silently
+   reproduce the G2 vacuity this seed removes).
+
+   FAILURE IS NOW LOUD, NOT SILENT. If that read fails (unreachable: the CR
+   create succeeds by construction) NO pod is created at all, so
+   [vsts_seed_pods_intact] reds instead of the seed handing back a pod with
+   an EMPTY owner-ref list - which [pod_filter] drops, emptying [condemned]
+   and making the leg G2-vacuous-but-CLEAN, the exact failure this phase
+   exists to eliminate.
+
+   PRECONDITION (the caller's, checkable by [vsts_seed_pods_intact]):
+   [ordinals] must be DISTINCT and each element >= [desired]. A repeated
+   ordinal makes the second create an [Object_already_exists] no-op, whose
+   response this fold discards, so the surplus pod count silently falls short;
+   an ordinal < [desired] is not condemned at all. Cluster shape identical to
+   [vsts_seed_faults], only the api-server resources differ. *)
+let vsts_seed_with_pods ~desired ~ordinals ~crash ~req_drop ~pod_monkey
+    ?(vct = false) () : Cluster.cluster_state =
+  let created, _ =
+    Api_server.handle_create_request vsts_installed
+      {
+        Api_method.namespace = "ns";
+        obj = V_stateful_set.marshal (vsts ~desired ~vct ());
+      }
+      {
+        Api_server.resources = Object_ref_map.empty;
+        uid_counter = 1;
+        resource_version_counter = 0;
+      }
+  in
+  let cr_owner : Owner_reference.t option =
+    Option.bind
+      (Object_ref_map.find_opt vsts_ref created.Api_server.resources)
+      (fun (obj : Dynamic_object.t) ->
+        Result.fold (V_stateful_set.unmarshal obj)
+          ~error:(fun _ -> None)
+          ~ok:(fun (live : V_stateful_set.t) ->
+            V_stateful_set.controller_owner_ref live))
+  in
+  let with_pods =
+    Option.fold cr_owner ~none:created ~some:(fun (owner : Owner_reference.t) ->
+        List.fold_left
+          (fun (api : Api_server.state) (ord : int) ->
+            let metadata =
+              {
+                (Object_meta.default ()) with
+                Object_meta.name =
+                  Some
+                    (V_stateful_set_reconciler.pod_name
+                       owner.Owner_reference.name ord);
+                namespace = Some "ns";
+                owner_references = Some [ owner ];
+              }
+            in
+            let api', _ =
+              Api_server.handle_create_request vsts_installed
+                {
+                  Api_method.namespace = "ns";
+                  obj =
+                    Pod.marshal
+                      (Pod.make ~metadata ~spec:(Some (Pod_spec.default ()))
+                         ~status:None);
+                }
+                api
+            in
+            api')
+          created ordinals)
+  in
+  {
+    Cluster.api_server = with_pods;
+    controller_and_externals =
+      Imap.add controller_id
+        {
+          Cluster.controller = Controller.init;
+          external_ = None;
+          crash_enabled = crash;
+        }
+        Imap.empty;
+    network = { Network.in_flight = Message.Pool.empty };
+    rpc_id_allocator = Message.Rpc_id_allocator.init ();
+    req_drop_enabled = req_drop;
+    pod_monkey_enabled = pod_monkey;
+  }
+
+(* The seed-integrity OBLIGATION of [vsts_seed_with_pods], as a total predicate
+   (P22 review finding F3): every conjunct [pod_filter]
+   (v_stateful_set_reconciler.ml:421-432) needs before an [ord >= desired] pod
+   can land in [condemned] and make G2's premise fire. TRUE iff
+
+   - [ordinals] are DISTINCT (a repeat makes the second create an
+     [Object_already_exists] no-op whose response the seed discards, so a
+     requested surplus pod is silently missing while every other conjunct still
+     passes), and
+   - the live CR is present at [vsts_ref] and unmarshals, and carries a name /
+     namespace / uid, and
+   - the live CR's replica count (the reconciler's own [~none:1] reading,
+     :545-548) is non-negative, and
+   - for EVERY requested ordinal: that ordinal is [>= replicas] (only those are
+     CONDEMNED, :412 - a smaller one is [needed] and G2 never fires), the pod is
+     present at its canonical ref ([Pod.kind], the CR's namespace,
+     [pod_name parent ord]), carries EXACTLY ONE owner reference, that reference
+     matches the CR's controller owner ref on every field [Owner_reference.equal]
+     compares - uid (equal to the uid stored on the LIVE CR in this same state:
+     READ, never the literal 1 - plus name, kind and the [controller] /
+     [block_owner_deletion] flags, since [pod_filter] admits by full-ref equality
+     and not by uid alone - and the pod's name round-trips through
+     [V_stateful_set_reconciler.get_ordinal parent] back to that ordinal.
+
+   Everything is read off the state passed in, so a caller can check its OWN
+   seed; a [false] is exactly the G2-vacuous-but-CLEAN leg (pod dropped by
+   [pod_filter] => [condemned] = [] => G2 [interesting] = 0 while the union gate,
+   dominated by G1, still reports the leg clean). Parent name and uid are read
+   from the live CR's metadata DIRECTLY, not from
+   [V_stateful_set.controller_owner_ref], so the predicate does not reuse the
+   builder's own derivation. Total: [Option.fold]/[Result.fold]/[List.for_all]
+   only, no partial accessor, no exception. *)
+let vsts_seed_pods_intact (s : Cluster.cluster_state) ~(ordinals : int list) :
+    bool =
+  let resources = s.Cluster.api_server.Api_server.resources in
+  (* [pod_filter] admits a pod via [Object_meta.owner_references_contains]
+     (object_meta.ml:72-75), i.e. [Owner_reference.equal] against the CR's
+     controller owner ref - which compares [controller], [block_owner_deletion],
+     [kind] and [name] as well as [uid] (owner_reference.ml:26-33). A uid-only
+     check would therefore PASS a pod that [pod_filter] silently DROPS (wrong
+     kind / wrong parent name / [controller = None]), i.e. the very
+     G2-vacuous-but-CLEAN leg this predicate exists to catch. Every field is
+     rebuilt from the LIVE CR's metadata plus the two flags the reconciler's
+     [make_owner_references] stamps, NOT by calling
+     [V_stateful_set.controller_owner_ref], so the check stays independent of
+     the builder's own derivation. *)
+  let owner_admissible ~(parent : string) ~(cr_uid : Common.Uid.t)
+      (r : Owner_reference.t) : bool =
+    Common.Uid.equal r.Owner_reference.uid cr_uid
+    && String.equal r.Owner_reference.name parent
+    && Common.equal_kind r.Owner_reference.kind V_stateful_set.kind
+    && Option.equal Bool.equal r.Owner_reference.controller (Some true)
+    && Option.equal Bool.equal r.Owner_reference.block_owner_deletion
+         (Some true)
+  in
+  let pod_intact ~(parent : string) ~(ns : string) ~(cr_uid : Common.Uid.t)
+      ~(replicas : int) (ord : int) : bool =
+    let pname = V_stateful_set_reconciler.pod_name parent ord in
+    (* [partition_pods] condemns only [ord >= replicas] (:412); a pod at a
+       SMALLER ordinal is [needed], never condemned, so G2's premise never
+       fires - the [ordinals] mis-parameterisation the builder documents as a
+       caller precondition, now actually CHECKED here rather than assumed. *)
+    ord >= replicas
+    && Option.fold
+         (Object_ref_map.find_opt
+            { Common.kind = Pod.kind; namespace = ns; name = pname }
+            resources)
+         ~none:false
+         ~some:(fun (obj : Dynamic_object.t) ->
+           let owners : Owner_reference.t list =
+             Option.value ~default:[]
+               (Dynamic_object.metadata obj).Object_meta.owner_references
+           in
+           List.length owners = 1
+           && List.for_all (owner_admissible ~parent ~cr_uid) owners
+           && Option.fold
+                (V_stateful_set_reconciler.get_ordinal parent pname)
+                ~none:false
+                ~some:(fun (parsed : int) -> parsed = ord))
+  in
+  List.compare_lengths (List.sort_uniq Int.compare ordinals) ordinals = 0
+  && Option.fold
+       (Object_ref_map.find_opt vsts_ref resources)
+       ~none:false
+       ~some:(fun (obj : Dynamic_object.t) ->
+         Result.fold (V_stateful_set.unmarshal obj)
+           ~error:(fun _ -> false)
+           ~ok:(fun (live : V_stateful_set.t) ->
+             let md : Object_meta.t = V_stateful_set.metadata live in
+             let sp : Stateful_set.ss_spec = V_stateful_set.spec live in
+             (* the reconciler's OWN replica reading, default included
+                (:545-548): [None] means 1, and a NEGATIVE count sends the
+                reconcile to [error_state] before [partition_pods] runs, so no
+                pod is ever condemned. *)
+             let replicas : int =
+               Option.fold ~none:1 ~some:(fun (r : int) -> r)
+                 sp.Stateful_set.replicas
+             in
+             replicas >= 0
+             && Option.fold (Object_meta.name md) ~none:false
+                  ~some:(fun (parent : string) ->
+                    Option.fold (Object_meta.namespace md) ~none:false
+                      ~some:(fun (ns : string) ->
+                        Option.fold md.Object_meta.uid ~none:false
+                          ~some:(fun (cr_uid : Common.Uid.t) ->
+                            List.for_all
+                              (pod_intact ~parent ~ns ~cr_uid ~replicas)
+                              ordinals)))))
+
 (* The multi-CR analogue of [vsts_seed]: one VStatefulSet [vstsN] per element of
    [desireds] (distinct names "vsts1".."vstsN" => distinct [Object_ref_map] keys),
    each admitted through a REAL [Api_server.handle_create_request] against a single

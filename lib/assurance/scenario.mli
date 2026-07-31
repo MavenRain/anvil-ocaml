@@ -175,6 +175,132 @@ val vsts_seed : desired:int -> fair:bool -> Cluster.cluster_state
     for the reachability argument that licenses a [~fair:true] (all-disabled,
     hence non-{!Cluster.init}) seed. *)
 
+val vsts_seed_with_pods :
+  desired:int ->
+  ordinals:int list ->
+  crash:bool ->
+  req_drop:bool ->
+  pod_monkey:bool ->
+  ?vct:bool ->
+  unit ->
+  Cluster.cluster_state
+(** {!vsts_seed_faults} plus one hand-built surplus Pod per element of
+    [ordinals]: the first G2-live (condemned-exercising) VSTS seed
+    (BUILD-SPEC-P22 section 2). Chains REAL {!Api_server.handle_create_request}
+    calls against a fresh empty api-server ([uid_counter = 1]): first the
+    {!vsts}[ ~desired] CR exactly as {!vsts_seed_faults} admits it (uid 1
+    server-stamped), then, folded over [ordinals], one Pod named
+    [V_stateful_set_reconciler.pod_name parent ord]
+    (["vstatefulset-vsts1-<ord>"]) in ["ns"] whose sole owner reference is the
+    LIVE CR's controller owner ref - read back from etcd at {!vsts_ref},
+    unmarshalled, and passed through [V_stateful_set.controller_owner_ref], so
+    its uid is the server-stamped 1 by construction, never forged. That SAME
+    single read supplies [parent]: the ref's [name] field IS the live CR's
+    [metadata.name] (v_stateful_set.ml:173-184), so the pod name cannot drift
+    from the CR the reconciler reads - there is no ["vsts1"] literal in the
+    seed. Every create response is DISCARDED by design: this is seed
+    construction, not protocol - uid/rv stamping is the server's, and seed
+    integrity is asserted by {!vsts_seed_pods_intact} (and the P22 seed test
+    through it), not inferred from responses. The create path
+    VALIDATES but does not strip the owner ref ([metadata_validity_check],
+    api_server.ml:90-97: Invalid iff MORE than one ref; ours has exactly one).
+
+    {b PRECONDITION - the CALLER's obligation, checkable by
+    {!vsts_seed_pods_intact} (P22 review finding F3).} [ordinals] must be
+    {b DISTINCT} and each element {b >= [desired]}. This builder DEGRADES
+    SILENTLY otherwise, and the degraded seed is indistinguishable from a good
+    one at the report level: a REPEATED ordinal makes the second
+    {!Api_server.handle_create_request} an [Object_already_exists] no-op that
+    returns the state UNCHANGED (api_server.ml), and the fold discards that
+    response, so a requested surplus pod is simply missing; an ordinal
+    [< desired] is never condemned. Either way [partition_pods] yields
+    [condemned = []], the G2-live [Get_then_delete_request] is never emitted,
+    G2's per-member [interesting] is 0 - and the leg STILL reports outcome
+    CLEAN with a non-zero [gate_states], because that union gate is DOMINATED
+    BY G1 (the disclosure recorded on
+    [Fault_check.check_scale_down_under_faults], lib/checker/fault_check.mli).
+    That is
+    precisely P21's G2 vacuity returning under a green verdict, which is the
+    one outcome this seed exists to eliminate. If the CR read that supplies the
+    owner ref should ever fail (unreachable: the CR create succeeds by
+    construction), NO pod is created at all rather than an unowned one, so the
+    predicate reds instead of the leg going quietly vacuous.
+
+    {b Why the pod is condemned-by-construction.} [partition_pods]
+    ([lib/controllers/v_stateful_set_reconciler.ml:399-416], upstream
+    model/reconciler.rs:641-654) puts EVERY owned, canonically-named pod whose
+    parsed ordinal is [>= replicas] into [condemned] (descending). The seeded
+    pod passes [pod_filter] ([:421-432]) by construction - it carries exactly
+    the CR's controller owner ref and its name round-trips through
+    [get_ordinal] - so each [ord >= desired] in [ordinals] lands in
+    [condemned] and the reconcile's Delete_condemned arm ([:716-747]) fires
+    the G2-live [Get_then_delete_request]. A mismatched owner-ref uid would
+    instead make the pod GC-orphaned ([Builtin_controllers.object_is_orphaned]
+    shape, builtin_controllers.ml:64-81) and silently reproduce the exact G2
+    vacuity this seed exists to remove.
+
+    This is a scale-down RESIDUE, not a scale-down EDGE (BUILD-SPEC-P22
+    section 7): no step mutates a live CR's spec, so the seed hand-builds the
+    post-scale-down state (desired + surplus ordinals) - exactly the state
+    shape upstream's condemned logic quantifies over. Fault toggles and [?vct]
+    exactly as {!vsts_seed_faults}, whose BUILD-SPEC-P13 §3 reachability
+    argument covers the flag dimension; the pod creates rest on the same
+    standing "a client created it first" argument as every seeded CR here. *)
+
+val vsts_seed_pods_intact : Cluster.cluster_state -> ordinals:int list -> bool
+(** The seed-integrity obligation of {!vsts_seed_with_pods} as a TOTAL
+    predicate (P22 review finding F3): [true] iff the state actually carries,
+    for every requested ordinal, a pod that [pod_filter]
+    ([lib/controllers/v_stateful_set_reconciler.ml:421-432]) will ADMIT and
+    [partition_pods] ([:399-416]) can therefore condemn. Conjunct by conjunct:
+
+    - [ordinals] are pairwise DISTINCT (a repeat is the silent-drop path: the
+      second create is an [Object_already_exists] no-op and one requested
+      surplus pod never exists, though every remaining conjunct still passes);
+    - the CR is present at {!vsts_ref}, unmarshals as a {!V_stateful_set.t},
+      and its metadata carries a name, a namespace and a uid;
+    - the CR's replica count - read the reconciler's OWN way, [None] meaning 1
+      ([lib/controllers/v_stateful_set_reconciler.ml:545-548]) - is
+      NON-NEGATIVE (a negative count sends the reconcile to [error_state]
+      before [partition_pods] ever runs, so nothing is condemned);
+    - for EVERY [ord] in [ordinals]: [ord >= replicas], since [partition_pods]
+      condemns only those ([:412]) and a SMALLER ordinal is [needed] instead -
+      this is the [< desired] half of {!vsts_seed_with_pods}'s precondition,
+      CHECKED here rather than assumed; the pod is PRESENT at its canonical ref
+      ([Pod.kind], the CR's namespace, [V_stateful_set_reconciler.pod_name
+      parent ord]); its [owner_references] holds EXACTLY ONE reference; that
+      reference matches the CR's controller owner ref on EVERY field
+      [Owner_reference.equal] compares ([owner_reference.ml:26-33]) - uid EQUAL
+      to the uid stored on the LIVE CR in this same state (read off the state,
+      never the literal 1 - the api-server stamps it, and a mismatch is
+      precisely the GC-orphan shape, builtin_controllers.ml:64-81), plus
+      [name = parent], [kind = V_stateful_set.kind] and
+      [controller = block_owner_deletion = Some true], because [pod_filter]
+      admits through [Object_meta.owner_references_contains]
+      ([object_meta.ml:72-75]) - full-reference equality, NOT uid alone, so a
+      uid-only check would pass a pod the reconciler silently drops; and the
+      pod's name ROUND-TRIPS through
+      [V_stateful_set_reconciler.get_ordinal parent] back to [ord].
+
+    Parent name, namespace, uid and replica count are read from the live CR's
+    own metadata/spec, not from [V_stateful_set.controller_owner_ref], so the
+    check does not reuse the builder's derivation. Total and combinator-only
+    ([Option.fold]/[Result.fold]/[List.for_all]): no exception, no partial
+    accessor, no [Bound]/depth/exploration cost - it is a pure read of the
+    seed.
+
+    {b What a [false] means.} The leg about to be run is G2-VACUOUS and will
+    still report CLEAN: the pod is dropped by [pod_filter], [condemned] is
+    empty, no [Get_then_delete_request] is emitted, G2's [interesting] is 0,
+    and the union [gate_states] stays non-zero because it is dominated by G1
+    (the disclosure on [Fault_check.check_scale_down_under_faults],
+    lib/checker/fault_check.mli). Callers of {!vsts_seed_with_pods} (and of
+    [Fault_check.check_scale_down_under_faults], which forwards [~ordinals]
+    unchecked) discharge that precondition with this predicate;
+    t_p22_scaledown asserts it for the shipped instantiation
+    [~desired:1 ~ordinals:[1]] and exercises its RED capability (absent pod,
+    doctored owner uid, emptied owner-ref list). *)
+
 val vsts_seed_multi_faults :
   desireds:int list ->
   crash:bool ->

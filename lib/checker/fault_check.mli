@@ -1879,3 +1879,134 @@ val check_internal_guarantee_under_faults :
     {b [require_fault]} selects what [gate_states] counts, exactly as on the
     sibling legs: [false] counts states where SOME member's [interesting]
     fires; [true] additionally requires {!budget_fault_taken}. *)
+
+val check_scale_down_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  ordinals:int list ->
+  require_fault:bool ->
+  fault_report
+(** {b P22 LEG} (BUILD-SPEC-P22 §3): the SHIPPED P21 internal GUARANTEE
+    family ({!Internal_guarantee.guarantee_family}, G1-G4 - deliberately NO
+    new family) checked by reachability over the fault product of the first
+    {b G2-LIVE} VSTS graph. {!Scenario.vsts_seed_with_pods} plants one
+    surplus pod per [~ordinals] element, so [partition_pods]
+    (v_stateful_set_reconciler.ml:399-416, upstream model/reconciler.rs:641-654)
+    condemns each [ord >= desired] pod and the Delete_condemned arm
+    (:716-747, emit :732-739) fires the [Get_then_delete_request] that G2
+    ([vsts_internal_guarantee_get_then_delete_req],
+    internal_rely_guarantee.rs:581) quantifies over. P21 measured G2 VACUOUS
+    on all five committed graphs (the MEASURED block on
+    {!check_internal_guarantee_under_faults}: [interesting = 0] everywhere);
+    this leg is that vacuity's removal - an unmasked measurement in the P17
+    style, not a new predicate surface - and it converts P21's mutant MG6
+    (wrong owner ref on the Delete_condemned emit) from INERT-BY-VACUITY to
+    refutable (BUILD-SPEC-P22 §5, MS1).
+
+    {b WHAT A RED MEANS HERE.} The
+    {!check_internal_guarantee_under_faults} reading, sharpened by liveness
+    of the premise: a red means the PORT's reconciler emitted a request
+    violating a G-member ON A GRAPH WHERE THE DELETE PATH IS LIVE. Upstream
+    discharges all four members ([internal_guarantee_condition_holds],
+    internal_rely_guarantee.rs:1003; [..._on_all_vsts], :1196), so a red is
+    a fidelity divergence in the port and a real finding - and on this graph
+    it can no longer hide behind a vacuous G2 premise. Expected non-reds,
+    disclosed up front (BUILD-SPEC-P22 §4 prediction 4):
+    TransactionAbort/ObjectNotFound on the condemned delete under the fault
+    legs are legitimate api-server GetThenDelete outcomes (port tolerance at
+    v_stateful_set_reconciler.ml:748-761 accepts Ok-or-NotFound); if a red
+    appears there, the first suspect is the checker's classification, not
+    the port.
+
+    {b Shape:} {!check_internal_guarantee_under_faults}'s clone with the
+    seed swapped and [~ordinals] forwarded to it - seed
+    [Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+    ~pod_monkey ()], CR [Scenario.vsts ~desired ()], same [default_depth],
+    same {!faulted_successors} product, same {!violated_of} naming, same
+    [require_fault]/{!budget_fault_taken} gate. The bound is the CALLER's
+    own: the shipped rows pass [P22_witness.p22_bound] (P13's shape widened
+    additively for the one extra pod + one extra create), and no committed
+    pin input ([p13_bound], the P13-P21 seeds, [vsts_cluster]) is edited, so
+    the committed 76 / 464 / 744 / 1976 / 116 graphs are untouched by
+    construction - a moved pin is a phase-STOP, never a retune.
+
+    {b The four-leg matrix} (BUILD-SPEC-P22 §3; zero-budget FIRST, the MG5
+    lesson - SL0 is run and diagnosed before any fault leg): SL0
+    ([zero_budget], [~require_fault:false]) / SLc ({!budget_crash_only},
+    [~require_fault:true]) / SLd (drop-only [{0; 1; 0}], [~req_drop:true],
+    [~require_fault:true]) / SLm (monkey-only [{0; 0; 1}],
+    [~pod_monkey:true], [~require_fault:true]). Shipped instantiation
+    [~desired:1 ~ordinals:[1]]: pod-0 ABSENT, one surplus pod at ordinal 1;
+    every reconcile round strictly drains the surplus, and the MG5
+    off-namespace blow-up mechanism is excluded by construction (the surplus
+    pod is IN ["ns"] and pod_filter-visible).
+
+    {b Honest-vacuity discipline (P14 N5), restating P21's disclosure.} The
+    union gate is DOMINATED BY G1: controller-sourced traffic is in flight
+    on every live graph, so some member's [interesting] fires and a non-zero
+    [gate_states] can NOT certify that G2's premise fired - for the
+    phase-defining claim the union gate is unfalsifiable. The per-member
+    [G2 interesting > 0] assertion therefore lives in t_p22_scaledown, per
+    member, never in this gate; a G2 count of 0 there is a phase-STOP and a
+    seed diagnosis (BUILD-SPEC-P22 §4 prediction 1, §5 MS3/MS4), never a
+    pass.
+
+    {b PRECONDITION ON [~ordinals] - the CALLER's obligation (P22 review
+    finding F3).} [ordinals] must be {b DISTINCT} and each element
+    {b >= [desired]}. This function does NOT check that: it forwards
+    [~ordinals] to {!Scenario.vsts_seed_with_pods} unchecked, and that builder
+    degrades SILENTLY - a repeated ordinal makes the second pod create an
+    [Object_already_exists] no-op that returns the api-server state UNCHANGED
+    (and the seed discards create responses by design), while an ordinal
+    [< desired] is never condemned. Either way the surplus pod is absent (or,
+    on any owner-ref failure, unowned), [pod_filter] admits nothing,
+    [condemned] is empty, the G2-live [Get_then_delete_request] is never
+    emitted and G2's [interesting] is 0 - yet THIS LEG STILL REPORTS OUTCOME
+    CLEAN WITH A NON-ZERO [gate_states], for exactly the reason disclosed
+    immediately above: the union gate is dominated by G1, so it cannot
+    witness G2's premise. A mis-parameterised call therefore reproduces
+    P21's G2 vacuity wearing a green verdict - the single failure mode this
+    leg exists to eliminate. Discharge the obligation with the total
+    predicate {!Scenario.vsts_seed_pods_intact} (state, [~ordinals]) on the
+    seed you are about to check: it verifies presence, exactly-one owner ref,
+    owner uid = the LIVE CR's stamped uid, the [get_ordinal] name round-trip,
+    and the distinctness of [ordinals]. The shipped rows are
+    [~desired:1 ~ordinals:[1]], asserted intact by t_p22_scaledown's
+    seed-integrity test.
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on
+    the sibling legs: [false] counts states where SOME member's
+    [interesting] fires; [true] additionally requires
+    {!budget_fault_taken}.
+
+    {b MEASURED (throwaway probe, 2026-07-30; reproduce, do not cite as an
+    asserted constant - the shipped pins live in test/p22_witness.ml).}
+    {b THE PHASE GATE PASSED: G2 [interesting] = 4 > 0 on SL0} - the first
+    G2-live VSTS graph, measured at [~desired:1 ~ordinals:[1]] under
+    [P22_witness.p22_bound] (P13's shape with [max_objects_per_kind] 4 -> 5,
+    [uid_ceiling]/[rv_ceiling] 6 -> 7), [depth = 40]. Every leg CLEAN and
+    DECISIVE, red 0 on every member over every graph. States / gate: SL0 88 /
+    20, SLc 808 / 276, SLd 1144 / 96, SLm 10216 / 2080. Per-member
+    [interesting] in G1/G2/G3/G4 order: SL0 4/4/4/20, SLc 80/104/32/296,
+    SLd 32/40/16/136, SLm 240/432/704/2120 - G2 fires on ALL FOUR legs, so
+    P21's family-wide G2 vacuity is REMOVED on this graph family (and MG6's
+    mutated emit is finally inside the explored graphs). Maxima STRICTLY
+    below the ceilings everywhere ([max_uid_seen]/[max_rv_seen]: SL0/SLc/SLd
+    4/4, SLm 5/6, vs 7/7); [max_uid] 3 -> 4 vs the P21 L0 baseline confirmed
+    spec prediction 6's uid arithmetic, while [max_rv] moved 2 -> 4 (+2, not
+    +1: the condemned delete is a second rv-advancing write) - the rv side
+    of the estimate is REFUTED and recorded (BUILD-SPEC-P22 §8).
+    [pruned_by_ceiling = true] on every leg with the residual DIAGNOSED as
+    exactly the inherited P13 [reconcile_ceiling = 2] coverage clip (widening
+    every OTHER ceiling leaves SL0 byte-identical at 88; only
+    reconcile_ceiling 3 moves it, to 124, still pruning) - the same
+    disclosed residual every committed graph asserts [true]
+    (t_p14_correspondence.ml:467). [pruned_by_budget = true] on every leg
+    (the seed's crash flag is ON; zero/one-dimension budgets clip), the
+    committed rows' exact shape. The five committed pins
+    76 / 464 / 744 / 1976 / 116 re-asserted UNMOVED by t_p21_guarantee on
+    the post-B3 tree. *)

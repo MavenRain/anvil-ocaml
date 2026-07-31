@@ -1097,3 +1097,52 @@ let check_internal_guarantee_under_faults ?(depth = default_depth)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
+
+(* ---- P22: the scale-down (G2-live) leg ---- *)
+
+(* P22 leg (BUILD-SPEC-P22 §3): the SHIPPED P21 internal GUARANTEE family
+   (G1-G4 - deliberately NO new family) re-asserted over the first G2-LIVE
+   graph. {!Scenario.vsts_seed_with_pods} plants one surplus pod per
+   [~ordinals] element, so [partition_pods]
+   (v_stateful_set_reconciler.ml:399-416) condemns each [ord >= desired] pod
+   and the Delete_condemned arm (:716-747, emit :732-739) fires the
+   [Get_then_delete_request] that G2 (internal_rely_guarantee.rs:581)
+   quantifies over. P21 MEASURED G2 vacuous on all five committed graphs (the
+   MEASURED block on {!check_internal_guarantee_under_faults}); this leg is
+   the unmasking measurement (the P17 precedent), and it converts P21's mutant
+   MG6 from INERT-BY-VACUITY to refutable (BUILD-SPEC-P22 §5, MS1).
+
+   Shape: {!check_internal_guarantee_under_faults}'s clone with the seed
+   swapped and [~ordinals] forwarded - same [default_depth], same
+   {!faulted_successors} product, same {!violated_of} naming, same
+   [require_fault]/{!budget_fault_taken} gate. The bound is the CALLER's own
+   (the shipped rows pass P22_witness.p22_bound, p13_bound widened additively
+   for the one extra pod + one extra create); no committed pin input -
+   [p13_bound], the P13-P21 seeds, [vsts_cluster] - is touched, so the
+   committed 76/464/744/1976/116 graphs are untouched by construction. *)
+let check_scale_down_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(ordinals : int list)
+    ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+      ~pod_monkey ()
+  in
+  let cr = Scenario.vsts ~desired () in
+  let invs = Internal_guarantee.guarantee_family ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))
