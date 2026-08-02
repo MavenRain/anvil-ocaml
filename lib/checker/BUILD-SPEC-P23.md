@@ -120,11 +120,11 @@ result stays TOTAL and DISJOINT at nine (section 2.2).
 
 **Both source strings MUST BE BARE.** Exactly
 `"vstatefulset_controller/proof/internal_rely_guarantee.rs:613"` and
-`"...:640"` - no parenthetical qualifier, ever. `t_p21_regression.ml:358-362`
+`"...:640"` - no parenthetical qualifier, ever. `t_p21_regression.ml:479-483`
 extracts the line with `String.rindex_opt s ':'` fed to `int_of_string_opt`; a
 qualifier in the `vsts_invariants.ml:217` style makes `line_of_source` return
 `None`, the member silently DROPS OUT of `roster_guarantee_lines`
-(`t_p21_regression.ml:366-374`), and the E-ledger firewall pin at `:385-396`
+(`t_p21_regression.ml:497-499`), and the E-ledger firewall pin at `:565-573`
 PASSES while the member is invisible. That is a vacuously-green pin - this
 project's named failure mode. Both sites were re-read this pass.
 
@@ -627,7 +627,7 @@ red an assertion, and a mutant predicted green must be SEEN green.
   `"...internal_rely_guarantee.rs:613 (needed+condemned only)"`. **PREDICT:
   `t_p21_regression`'s E-ledger reversal clause STILL PASSES while L1 has
   silently vanished from `roster_guarantee_lines`**, because
-  `line_of_source` (`t_p21_regression.ml:358-362`) returns `None`. That
+  `line_of_source` (`t_p21_regression.ml:479-483`) returns `None`. That
   vacuous green is the failure this row exists to exhibit; the phase must
   therefore ALSO carry a positive assertion that both `:613` and `:640` are
   PRESENT in `roster_guarantee_lines`, not merely that no excluded line is.
@@ -1151,7 +1151,7 @@ clean of it.
 | MB5 | `t_p23_mutation.ml:626` `controller_id + 1` -> `controller_id + 0` | **KILLED** | `"...interesting = 0 over ALL of BL0 at controller_id + 1"`, 0 vs 52 |
 | MB6 | `local_binding.ml:311` `~undecodable:true` -> `~undecodable:false` | **SURVIVED at graph level, then KILLED at unit level** | nothing on any graph; then `t_p23_mutation` `"MB6: L1 HOLDS on an undecodable local state"`, true/false |
 | MB7 | `t_p23_mutation.ml:741` `~vct:true` -> `~vct:false` | **KILLED** | `"MB7: the PVCS-ARE-EMPTY PIN REDDENS on a vct:true seed"`, true/false |
-| MB8 | `local_binding.ml:297` and `:309` both `...rs:613` -> `...rs:613 (needed+condemned only)` | **KILLED x4** | `t_p21_regression` BARE-SOURCE FIREWALL 6 vs 5; `t_p23_regression` (name, source) pairs; `t_p23_mutation` MB8 parse count 2 vs 1; and `t_p21_regression.ml:465-471`, the RESHAPED positive committed-literals row, `Expected: [613; 640] / Received: [640]` (the first three measured in the matrix run, the fourth in the review-fix pass - see the MB8 paragraph below) |
+| MB8 | `local_binding.ml:297` and `:309` both `...rs:613` -> `...rs:613 (needed+condemned only)` | **KILLED x4** | `t_p21_regression` BARE-SOURCE FIREWALL 6 vs 5; `t_p23_regression` (name, source) pairs; `t_p23_mutation` MB8 parse count 2 vs 1; and `t_p21_regression.ml:528-534`, the RESHAPED positive committed-literals row, `Expected: [613; 640] / Received: [640]` (the first three measured in the matrix run, the fourth in the review-fix pass - see the MB8 paragraph below) |
 | MB9 | `local_binding.ml:211` `Option.equal String.equal om.namespace (Some namespace)` -> `Option.is_some om.namespace` (L2's inner-forall CONSEQUENT, upstream `:659-661`) | **KILLED at unit level** (survives every graph, by construction) | `t_p23_mutation` `mb9_inner_consequent`, `"MB9: L2 is RED on an in-flight ok List_response whose object is OUTSIDE the CR's namespace"`, `Expected: false / Received: true` |
 | X1 | `local_binding.ml:329` `&& step_binding ...` -> `&& not (step_binding ...)` (L2's UNIQUE conjunct) | **KILLED** | `"BL0: outcome CLEAN"`; leg REFUTED naming L2, **graph pins UNMOVED** |
 | X2 | `local_binding.ml:313` `bound_in_local_state ...` -> `not (bound_in_local_state ...)` (inside L1's `~decoded`) | **KILLED** | `"BL0: outcome CLEAN"`; leg REFUTED naming L1, **graph pins UNMOVED** |
@@ -1245,7 +1245,7 @@ compared `[640]` with `[640]` and passed. Measured, under the MB8 mutant with
 that row moved ahead of the firewall so it could report: the self-derived form
 logs `ASSERT` and PASSES while only the firewall reds. The row is now written
 against the COMMITTED LITERALS `[613; 640]`
-(`t_p21_regression.ml:465-471`, ordered ahead of the count firewall so the first
+(`t_p21_regression.ml:528-534`, ordered ahead of the count firewall so the first
 failure names the member that went invisible), and under the same mutant it
 FAILS `Expected: [613; 640] / Received: [640]`. So MB8 kills **four**
 independent assertions, the positive one among them (`:613` and `:640` PRESENT

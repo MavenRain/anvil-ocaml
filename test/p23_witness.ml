@@ -358,7 +358,7 @@ let l2_name : string = "vsts_local_pods_and_pvcs_bound_with_key"
      pvcs-are-empty pin above HAS now been seen to redden. MB8 KILLED FOUR
      independent assertions: three were measured in the matrix run itself, and
      the fourth - t_p21_regression's POSITIVE bare-source row at
-     t_p21_regression.ml:465-471, RESHAPED onto the committed literals
+     t_p21_regression.ml:528-534, RESHAPED onto the committed literals
      [613; 640] because the original shape took its expected value from the
      expression under test and was MEASURED to pass under this very mutant -
      was measured in the review-fix pass, where it fails

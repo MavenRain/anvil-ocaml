@@ -321,7 +321,7 @@ A mutant killed by a build error or timeout is NOT caught - reshape it
   port's builders and NOT shipped; noted as a possible measured secondary.
 - E3-E5 (P23 bank) preconditions, recorded so they are not rediscovered:
   (a) needs THIS graph for E4's condemned clause; (b) needs a named
-  headline mutant; (c) consciously re-opens t_p21_regression.ml:386-391;
+  headline mutant; (c) consciously re-opens t_p21_regression.ml:557-573;
   (d) `unmarshal_state` silently defaults needed/condemned/pvcs/indices -
   decode-defaults must be counted separately or the register ships a
   vacuous pass; (e) E5's AfterListPod branch reads pending_req_msg beyond

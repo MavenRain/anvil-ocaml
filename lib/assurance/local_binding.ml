@@ -286,7 +286,7 @@ let at_reconcile ~(controller_id : int) ~(cr_key : Common.object_ref)
         ~ok:(fun (st : V_stateful_set_reconciler.s) -> decoded orc st s))
 
 (* The upstream source literals, in member order L1, L2. BOTH ARE BARE: no
-   parenthetical qualifier, ever. [t_p21_regression.ml:358-362] extracts the
+   parenthetical qualifier, ever. [t_p21_regression.ml:479-483] extracts the
    line with [String.rindex_opt s ':'] fed to [int_of_string_opt]; a qualifier
    makes that return [None], the member silently DROPS OUT of
    [roster_guarantee_lines] and the E-ledger firewall pin PASSES while the

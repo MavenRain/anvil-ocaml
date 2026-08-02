@@ -2033,9 +2033,12 @@ val check_local_binding_under_faults :
     [condemned] are bound to the CR whose key the round runs under, and the
     round parked at [AfterListPod] really is parked on a pod-[ListRequest] in
     the CR's namespace with every matching ok response carrying only objects of
-    that namespace. It retires P21's E3/E4/E5 deferral
-    (internal_guarantee.mli:167-171) and re-partitions the file's nine
-    [pub open spec fn] from 4 shipped + 5 excluded to 6 shipped + 3 excluded.
+    that namespace. It retires P21's E4/E5 deferral
+    (internal_guarantee.mli:167-171) - {b E3 :606 STAYS EXCLUDED}, per
+    local_binding.mli:39-45 and the committed [P21_witness.ledger_e3_lines] =
+    [[606]] pin (t_p21_regression.ml:72, :501-503) - and re-partitions the file's
+    nine [pub open spec fn] from 4 shipped + 5 excluded to 6 shipped + 3
+    excluded.
 
     {b WHAT A RED MEANS HERE.} The {!check_internal_guarantee_under_faults}
     reading, carried over: upstream DISCHARGES both members
@@ -2162,3 +2165,367 @@ val check_local_binding_under_faults :
     because it mutates a branch the measured zero decode failures make dead
     (MB6), which is closed by a UNIT row in [t_p23_mutation] rather than left
     disclosed. *)
+
+val check_state_predicates_under_faults :
+  ?depth:int ->
+  ?req_drop:bool ->
+  ?pod_monkey:bool ->
+  Bound.t ->
+  budget ->
+  desired:int ->
+  ordinals:int list ->
+  require_fault:bool ->
+  fault_report
+(** {b P24 LEG} (BUILD-SPEC-P24 §2-§3, settled by
+    [~/Documents/anvil-ocaml-p24-harness/RULING.md]): the NEW VSTS
+    state-predicate register ({!State_predicates.predicate_family} - M1
+    [local_state_is_valid], liveness/state_predicates.rs:192; M3
+    [resp_msg_is_ok_list_resp_of_pods] :107) checked by reachability over the
+    fault product of the P22/P23 scale-down graph family.
+
+    Where P23 asked whether what the round is HOLDING is BOUND to the CR, this
+    leg asks whether it is VALID in upstream's own sense: the cursors sit inside
+    their lists, each occupied [needed] slot carries the {e exact}
+    ordinal-indexed name, each [condemned] pod's ordinal is at or above
+    [replicas], and the ok responses in flight for the request the round parked
+    on really are the pod list upstream's proof says they are.
+
+    {b WHY A FILE UNDER [liveness/] BELONGS ON A SAFETY LEG.} All 34 [StatePred]
+    occurrences in [state_predicates.rs] are [-> StatePred<ClusterState>] and the
+    file contains {b zero} [TempPred] / [ActionPred] / [leads_to] / [eventually]
+    / [always(] (BUILD-SPEC-P24 §1, [rg] re-measured in the main loop). Nothing
+    ported here is temporal, so nothing about this leg's [~depth] or its lasso
+    is being asked to carry a fairness argument.
+
+    {b WHAT A RED MEANS HERE.} The {!check_local_binding_under_faults} reading,
+    carried over: upstream uses these predicates as milestones inside a
+    DISCHARGED liveness proof, so a red is not "the environment misbehaved" but a
+    {b FIDELITY DIVERGENCE in the port} - the port's reconciler reached a local
+    state, or parked on a request, that upstream's proof says it cannot - and it
+    is a real finding, never environment noise.
+
+    {b THAT READING HOLDS ONLY FOR CONJUNCTS UPSTREAM ASSERTS OF THE EXECUTIONS
+    THIS LEG EXPLORES, AND THIS PHASE MET THE EXCEPTION.} M3's two
+    ETCD-CONSUMING conjuncts (:116-118, :119-124) are scoped by upstream's own
+    comment at state_predicates.rs:116 to steps "taken by other controllers
+    satisfying rely conditions". This port models no rely conditions, and BLc and
+    BLm inject exactly the rely-violating writers that assumption excludes, so
+    their red there was neither a port defect nor noise - it was upstream's
+    predicate being read outside its scope. They are now
+    {b EXCLUDED-WITH-A-PIN on a SCOPE ground} and this leg is CLEAN on all four
+    graphs. The refutation is PINNED rather than discarded; see the block at the
+    end of this comment.
+
+    {b A THIRD MEMBER WAS WRITTEN FOR THIS LEG, RUN ON IT, AND CUT. THE CUT IS
+    A FINDING AND IT IS DISCLOSED HERE, NOT ONLY IN THE FAMILY'S INTERFACE,
+    BECAUSE IT IS WHAT THIS LEG MAY AND MAY NOT BE READ AS COVERING.} The
+    candidate was upstream [req_msg_is_list_pod_req] (:45-57) closed over the
+    cluster state by [pending_list_pod_req_in_flight] (:59-66). Rendered as an
+    INVARIANT over this leg's four graphs it is {b ENTIRELY CONTAINED in P23's
+    shipped L2}, and this leg therefore buys nothing on the request side. The
+    partition, conjunct by conjunct:
+
+    - {b FIVE ARE LITERALLY L2's.} [:50] ([dst == APIServer],
+      local_binding.ml:221); [:51] (the content is an [APIRequest], the literal
+      [false] arms of [list_req_content_matches], local_binding.ml:164-166);
+      [:52] (the request is a [ListRequest], local_binding.ml:153-155);
+      [:53-56] ([kind: PodKind] and [namespace: cr_key.namespace],
+      local_binding.ml:151-166); and [:64] ([pending_req_msg_is], discharged by
+      reading the [pending_req_msg] slot, which L2's [after_list_pod_ok]
+      :217-225 already does).
+    - {b [:65] IS ENTAILED BY THE PORT'S OWN RENDERING PREMISE, AND THE
+      ENTAILMENT IS MEASURED.} ([s.in_flight().contains(req_msg)], the RAW
+      REQUEST's own network membership.) It {e is} narrower than anything L2
+      checks, because delivery is ATOMIC: the port mirrors upstream's
+      [in_flight.remove(recv).add(send)] at lib/cluster/network.ml:19-37, so
+      once a response exists that request occurrence is already gone. That is
+      precisely why it is entailed here: upstream's predicate is a liveness
+      MILESTONE, so the port narrowed the premise to the DELIVERY WINDOW
+      ("parked at [AfterListPod], pending slot [Some], no matching response in
+      flight yet"), and the shipped invariant
+      [pending_req_in_flight_xor_resp_in_flight_if_has_pending_req_msg]
+      (reconcile_correspondence.ml:213) turns that premise into ":65 holds".
+      {b Stage B measured it exactly}: the raw-in-flight population is
+      8 / 52 / 48 / 744 and the delivery window is 8 / 52 / 48 / 744 -
+      IDENTICAL on all four graphs. That equality is now ASSERTED, by two
+      independent routes and without naming a literal, in
+      [t_p24_state_predicates]'s [inherited_population] case.
+    - {b [:49] IS THE ONE CONJUNCT L2 GENUINELY LACKS, AND IT IS UNWITNESSED.}
+      ([req_msg.src == Controller(controller_id, vsts_key)].) Its absence from
+      L2 is real - exactly one [.src] occurrence exists across
+      local_binding.ml/.mli and it is on the {e response} variable inside
+      [ok_list_resps_for] (:193-200), while [after_list_pod_ok] (:217-225)
+      checks [rm.dst] and the content and never [rm.src]; upstream
+      internal_rely_guarantee.rs:640-664, L2's own source, has no [req_msg.src]
+      conjunct either. But probe B4 measures the pending request's [src] over
+      the WHOLE parked-with-pending population - denominators
+      {b 16 / 112 / 288 / 1560} - and the src-is-NOT-this-controller count is
+      {b 0 on all four graphs}, pinned as
+      [P24_witness.pending_src_not_controller_everywhere]. Upstream :49 is TRUE
+      at every state at which it is evaluated. It is a {b green that could not
+      have been red} - this phase's own defect condition, the same one that
+      excluded :241, :246 and the eight PVC conjuncts.
+
+    {b THE MUTANT THAT LOOKED LIKE A SHIP GATE, AND WHY IT WAS NOT ONE.} RULING
+    §2's gate read: the member ships iff M2a' ([.src] -> [.dst] in the ported
+    :49) or M2b' (the raw in-flight combinator swap in :65) is SEEN RED on this
+    leg while {!check_local_binding_under_faults} stays GREEN in the same run.
+    M2b' was STRUCK on the equal-populations measurement above - it can never
+    fire. M2a' WAS run and DID redden this leg (SP0 and SPd moved [OK] ->
+    [FAIL]) with [p23_local_binding] reporting "Test Successful ... 11 tests
+    run" in the same run. {b It does not discriminate.} The src is
+    [Controller (id, key)] and the dst is [Api_server] at EVERY state of the
+    premise population, so the swapped conjunct is FALSE on the entire premise
+    and the leg reds by FALSIFICATION. That shows the conjunct is load-bearing
+    for the mutant; it does not show :49 has exercisable content. {b The gate as
+    written was UNDERSPECIFIED} - it did not require the mutant to be
+    non-trivially falsifying, which is the same class of error as RULING
+    §3.3's vacuity-only gate - and the main loop has said so rather than letting
+    the gate's letter carry a member its spirit rejects. {b THE MEMBER IS CUT.}
+    (The sketch's earlier M2a mutant - swap the Pod kind constructor - remains
+    REJECTED on the older ground: it targets [:53-56], which L2 already
+    carries, so it would redden the P23 leg too.)
+
+    {b WHAT WOULD BUY :49, AND WHY IT IS NOT BUILT.} A graph carrying a pending
+    request at [AfterListPod] whose [src] is NOT
+    [Controller (controller_id, cr_key)]. No current seed produces one:
+    [Message.controller_req_msg] (lib/cluster/message.ml:175-179) is the only
+    constructor the reconcile path uses and it always stamps that source.
+    Producing one needs a NEW SEED, and a new seed would move the shared graphs
+    and every committed P13-P23 pin with them, so it is deliberately not added.
+    :49 rides into P25 exactly the way upstream :112's unobserved
+    owner-reference reject path does. {b NO RED-RATE IS PREDICTED FOR :49 AND
+    NONE MAY BE WRITTEN HERE}: the "structurally always true, so 100% of parked
+    states" reading was refuted as UNMEASURED, and the 0 above is a measurement
+    ON THESE FOUR GRAPHS - it says :49 has no witness HERE, never that it could
+    not have one. {b THE COMPLEMENT'S TAUTOLOGY WAS REPAIRED BEFORE THE ZERO
+    WAS PINNED}: it used to be defined as the parked population MINUS the
+    positive projection, which made it report the residue whatever the truth
+    was, and it is now read off a SRC HISTOGRAM
+    ([P24_witness.pending_src_occupancy]) built by an EXHAUSTIVE five-arm match
+    on {!Message.host_id} with the [Controller] arm split by the [(id, key)] it
+    carries. The buckets measure Controller_this 16 / 112 / 288 / 1560 and ZERO
+    on each of the other five, they SUM to the parked population, and the
+    Controller_this bucket agrees with the positive projection computed the
+    other way round; making the positive projection constant was SEEN to redden
+    that partition.
+
+    {b THE FAMILY IS ASSERTED ALONE.} Not unioned with
+    {!Local_binding.binding_family}, not with
+    {!Internal_guarantee.guarantee_family}, not with
+    [Invariants.cluster_structural], not with [Invariants.always], not with
+    [Vsts_invariants.always]. This is the P15 MASKING TRAP, forbidden in-tree at
+    fault_check.ml:476-482: [~violated] resolves through
+    [Invariants.first_violated] (invariants.ml:1046), which returns the FIRST
+    member in LIST ORDER, so a unioned member masks the phase headline and the
+    leg never evaluates the member the phase exists to measure. Unioning with
+    P23's family in particular would be wrong twice over, and the CUT candidate
+    is the demonstration: by the containment above, L2 would have sat ahead of
+    it and taken the name on precisely the conjuncts it did not claim. "Union"
+    in the gate below means the OR over the register's OWN two members, never a
+    union of two families. A [violated] naming a P21, P23 or structural member
+    on this leg means the lists were unioned somewhere: a harness bug, not a
+    finding.
+
+    {b PER-MEMBER ATTRIBUTION STILL COMES FROM A REPLICA, NOT FROM [violated].}
+    M1 is silent at [AfterListPod] and M3 fires only there, so with the family
+    at two members a leg-level [violated] happens to be unambiguous - but that
+    is a property of the current partition, not of the mechanism, and it was NOT
+    true while the cut candidate shared M3's premise and sat ahead of it in list
+    order. Per-member red / [interesting] counts are therefore still taken from
+    a REPLICA (the t_p21_guarantee.ml:193-237 technique), never from this
+    report's [violated] name.
+
+    {b Shape:} {!check_local_binding_under_faults}'s clone with exactly ONE line
+    changed, the family binding - seed
+    [Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+    ~pod_monkey ()], CR [Scenario.vsts ~desired ()], same [default_depth], same
+    {!faulted_successors} product, same {!violated_of} naming, same
+    [require_fault]/{!budget_fault_taken} gate. The bound is the CALLER's own.
+
+    {b PIN SAFETY, structural rather than hoped for.} [run_leg] calls
+    [Model_check.explore] with only [~depth ~successors ~equal ~hash ~init]
+    (fault_check.ml:274-279) and [explore] takes no invariant argument
+    (model_check.mli:57-63); [fault_metadata] (ml:202-233) reads only
+    [~bound ~budget ~cluster ~controller_id]. {b Graphs are family-blind}, so
+    this leg, reusing the P22/P23 [(seed, bound, budget, depth)], cannot move any
+    committed graph. No committed pin input ([p13_bound], [p21_bound],
+    [p22_bound], [p23_bound], the P13-P21 seeds, [Scenario.vsts_cluster],
+    [Scenario.vsts_seed_faults], {!faulted_equal}/{!faulted_hash}) is touched,
+    and {b the shared [faulted] state block (fault_check.ml:37-145) is consumed
+    AS-IS} - widening it would perturb all fourteen legs' graphs at once, which
+    is why this leg adds no product dimension of its own. The committed pins that
+    must come back BYTE-IDENTICAL are 76 / 464 / 744 / 1976 / 116 (P13-P21),
+    88 / 808 / 1144 / 10216 with gates 20 / 276 / 96 / 2080 (P22), and the P23
+    gates 68 / 560 / 816 / 7920. A moved pin is a phase-STOP, never a retune.
+
+    {b PRECONDITION ON [~ordinals] - the CALLER's obligation}, inherited
+    UNCHANGED from {!check_scale_down_under_faults} and
+    {!check_local_binding_under_faults} because the seed builder is the same:
+    [ordinals] must be {b DISTINCT} and each element {b >= [desired]}. This
+    function does NOT check that; it forwards [~ordinals] to
+    {!Scenario.vsts_seed_with_pods} unchecked, and that builder degrades
+    SILENTLY. Discharge it with {!Scenario.vsts_seed_pods_intact}. The
+    P23-specific caveat carries over verbatim: a [~desired:1 ~ordinals:[0;1]]
+    instantiation falls OUTSIDE that predicate (scenario.ml:495-517 requires
+    every requested ordinal be [>= replicas]) and would need its own integrity
+    check, never a reuse of this one.
+
+    {b [require_fault]} selects what [gate_states] counts, exactly as on the
+    sibling legs: [false] counts states where SOME member's [interesting] fires;
+    [true] additionally requires {!budget_fault_taken}.
+
+    {b THIS LEG IS CLEAN ON ALL FOUR GRAPHS, AND IT IS CLEAN BECAUSE OF AN
+    EXCLUSION. READ THIS BEFORE QUOTING IT.} With M3's two ETCD-CONSUMING
+    conjuncts shipped on stage B's measured non-zero [owned_objs] fork, the leg
+    was CLEAN on BL0 and BLd and {b REFUTED on BLc and BLm}. The attribution was
+    measured, not guessed: on BLc, upstream :116-118 (the owned-object-ref set
+    equality against [Cluster.resources]) failed at 8 states and :119-124 at 4;
+    on BLm they were 72 and 40. [weakly_eq] itself was never the cause - the
+    metadata, kind and spec comparisons disagree at ZERO states on every graph,
+    over a comparison population asserted non-zero first, and every :119-124
+    failure was the :122 key-presence conjunct. Both modes are STALENESS of an
+    in-flight list response relative to etcd, produced by a writer landing
+    between the response's formation and its observation: a crash-orphaned
+    request applied late on BLc, the pod monkey on BLm.
+
+    {b THE MAIN LOOP HAS RULED, ON A SCOPE GROUND.} Upstream's own comment at
+    state_predicates.rs:116 scopes that coherence to steps "taken by other
+    controllers satisfying rely conditions"; this port has no rely-condition
+    machinery; and BLc and BLm inject by construction exactly the rely-violating
+    writers the assumption excludes. Asserting those conjuncts on those graphs
+    asserts upstream's predicate outside its stated scope, so they are
+    {b EXCLUDED-WITH-A-PIN} - the phase's THIRD exclusion ground, distinct from
+    the PVC pin's SHAPE ground (seven M1 conjuncts) and from :241 / :246's
+    REACHABILITY ground (two). {b Neither the leg assertion nor M3's premise was
+    touched}: relaxing either would have been the retune this project forbids.
+    M3 now ships its SEVEN pure-shape conjuncts (:115, :126, :127, :128, :129,
+    :130, :132) and this leg is clean everywhere.
+
+    {b THE REFUTATION IS PINNED, NOT DISCARDED, AND THAT IS WHAT MAKES THE
+    EXCLUSION HONEST.} Probe B5 in [test/p24_witness.ml] stays live after the
+    conjuncts are gone, and [t_p24_state_predicates]'s [scope_exclusion_pin]
+    case ASSERTS the whole measurement on BL0/BLc/BLd/BLm: set-equality failures
+    0 / 8 / 0 / 72 with the two containment directions pinned separately
+    (0 / 4 / 0 / 32 and 0 / 4 / 0 / 40, asserted DISJOINT), coherence failures
+    0 / 4 / 0 / 40 with the :122 half measured on its own route at the same
+    numbers, [weakly_eq]'s three arms at ZERO everywhere behind a non-zero
+    comparison population, and multi-matching-response states at ZERO behind a
+    three-column histogram that sums to the parked-with-pending count. Before
+    the conjuncts came out, M3's per-state red count was measured EQUAL to the
+    union of the two failure columns on every graph, which is what attributes
+    the leg's former red to these two conjuncts and nothing else.
+
+    {b THE MEASUREMENTS THEMSELVES.} Stage B ran
+    [opam exec --switch=anvil-ocaml -- dune build @runtest] from the repo root,
+    never through [tail]; the dump lives at
+    ~/Documents/anvil-ocaml-p24-harness/stageB-p24-sp.log and the numbers are
+    consumed as prose in {!State_predicates}'s interface. THREE of them are
+    pinned as literals, in [test/p24_witness.ml], and all three are measured
+    ZEROES a phase decision rests on (the probe-B5 SCOPE-EXCLUSION pins above
+    are a fourth group, and of a different kind: a measured REFUTATION rather
+    than a vacuity):
+
+    - [after_delete_outdated_occupancy_everywhere = 0], the pin that moved M1's
+      :241 to EXCLUDE-WITH-A-PIN. It is measured on BL0/BLc/BLd/BLm and is
+      NEVER inherited from t_p11_vsts_liveness.ml:113-114, which lives on a
+      {e different}, smaller 20-state [fair:true] P11 graph; its positive
+      control is the sibling [Delete_outdated] column at 8 / 76 / 64 / 1272, so
+      the zero is a measured vacuity and not an unexplored region.
+    - [ok_resp_some_unowned_obj_everywhere = 0], the owner-reference filter's
+      REJECT-PATH zero. Not one object carried by any matching ok list-response
+      on any P24 graph fails [Object_meta.owner_references_contains], so
+      upstream :112's filter is only ever observed ACCEPTING and its rejecting
+      direction has no witness on this leg. Its positive controls are asserted
+      first (the CR really has a controller owner reference; the responses
+      really carry objects, 8 / 60 / 40 / 776), so this too is a measured
+      finding rather than an unexplored region, and it rides into P25.
+    - [pending_src_not_controller_everywhere = 0], the zero that CUT the third
+      candidate. Not one parked pending request on any P24 graph is sourced
+      anywhere but [Controller (controller_id, cr_key)], over denominators
+      16 / 112 / 288 / 1560, so upstream :49 is TRUE wherever it is evaluated.
+      Its positive controls are the de-tautologised src-histogram partition
+      described above, asserted first. It rides into P25 alongside :112's.
+
+    Every committed P13-P23 literal was diffed and none moved - the graphs are
+    family-blind, as the paragraph above argues structurally, and the replicas
+    re-measure 88 / 808 / 1144 / 10216 states and 76 / 680 / 1056 / 8872 decoded
+    unchanged, both while the leg was refuted on two graphs and after the
+    exclusion made it clean on four. The per-conjunct partition this leg
+    inherits - {b eleven exclusions on THREE grounds}: M1's fourteen PORT with
+    seven dying on the SHAPE ground's [pvcs_non_empty_everywhere] pin and :241
+    with :246 on a REACHABILITY ground, and M3's seven pure-shape conjuncts PORT
+    with :116-118 and :119-124 on the SCOPE ground - lives in
+    {!State_predicates}'s interface and is deliberately not restated here. The
+    CUT candidate's own partition (five conjuncts in L2, :65 entailed, :49
+    unwitnessed) is a NEGATIVE RESULT and is recorded in the same place, under
+    its own heading, so that it is read as a finding and not as an exclusion of
+    a shipped member's conjunct.
+
+    {b RED CAPABILITY OF THIS LEG, MEASURED BY DELETION - AND IT IS ZERO. READ
+    THIS BEFORE QUOTING THE LEG AS COVERAGE.} The sibling P23 block above records
+    its red capability off a mutation matrix of FLIPS. This leg's was measured the
+    other way, one conjunct at a time, and the answer is different in kind.
+
+    {b A FLIP MUTANT AND A DELETION MUTANT TEST DIFFERENT THINGS.} Flipping
+    [Option.is_some om.name] to [Option.is_none om.name] reds - but only because
+    [name] is [Some] at every object of every ok list-response on all four graphs,
+    so the flipped conjunct is FALSE on the whole population and the leg reds by
+    FALSIFICATION. That shows the MUTANT is false; it does not show the CONJUNCT
+    contributes anything. DELETING it is the honest test, and it is the test that
+    CUT the third candidate above (upstream :49 measured true wherever it is
+    evaluated, so [M2a'] reddened by emptying the premise, not by separating it).
+
+    {b THE MEASUREMENT.} Every conjunct M1 and M3 ship - {b 22 deletable sites}
+    (M1's 14 upstream conjuncts render as 16, because :195 and :196 each have
+    their [>= 0] half written out for the [int]/[nat] difference; M3's 7 render as
+    6, because :129 and :130 are one [Option.equal]) - was deleted on its own, the
+    tree rebuilt, and all 82 test executables run individually. {b FOUR sites
+    redden anything}: M1 :200-204 and :205-214 (the needed and condemned foralls),
+    M3 :115 (no duplicate object refs) and M3 :129-130 (the namespace, whose kill
+    is SHARED with P23's L2 by the same test's own containment row). {b Eighteen
+    do not}: M1 :194, both halves of :195 and :196, :230-231, :235, :236, :237,
+    :238, :239, :240, :242, :248 - green individually and green all together - and
+    M3 :126, :127, :128, :132. {b :126, :127 and :132 are one ENTAILMENT CLASS}
+    with red capability 1 and per-member 0: no member is individually killable,
+    all three deleted together are. So {b the coverage this leg earns over
+    {!check_local_binding_under_faults} is THREE conjunct sites} - M1 :200-204,
+    M1 :205-214, M3 :115 - and a consumer may not read the leg's CLEAN verdict on
+    four graphs as coverage of the other nineteen.
+
+    {b NOT ONE OF THE 22 DELETIONS WAS CAUGHT BY ANYTHING THIS LEG DRIVES, AND
+    THAT IS FORCED BY THE LEG'S SHAPE.} All four kills are [t_p24_mutation] rows
+    on hand-FORGED states. Deletion WEAKENS [holds]; this leg asserts [holds] at
+    every reachable state and is CLEAN on all four graphs; and neither member's
+    [interesting] reads its own body ([State_predicates]'s M1 witness is the
+    [at_vsts_step] premise, M3's is the parked-with-a-matching-response premise).
+    A deletion mutant can only be caught by an assertion that some member is RED
+    at some reachable state, and this leg has none for a SHIPPED conjunct - the
+    two that were red, :116-118 and :119-124, are the SCOPE exclusion above.
+    {b BL0/BLc/BLd/BLm contribute ZERO deletion-kill capability to this
+    register.} What they buy is this leg's greenness and the vacuity and
+    refutation pins, which is real assurance and is a different claim.
+
+    {b THE CONJUNCTS ALL STAY, AND THE ZEROES ARE THE EXPECTED OBSERVATION.}
+    Fidelity to upstream is why they are here, and a Verus invariant is a
+    predicate the reconciler PRESERVES - no state the reconciler reaches can
+    falsify it, which is what "invariant" means - so on a small explored graph
+    family the expected per-conjunct red capability is exactly zero. {b This is a
+    statement about what these four graphs EXERCISE, not a defect in the port.}
+
+    {b WHAT WOULD EXERCISE THE REST, AND WHY IT IS NOT BUILT HERE.} Per-conjunct
+    kill capability is buyable seed-free, by adding one forged-state row to
+    [t_p24_mutation] per unexercised conjunct on the existing [M1a] / [M1b]
+    pattern - that moves no seed, no bound and no pin, and it would cover all
+    fourteen M1 sites and :128 (never the {:126, :127, :132} class, which nothing
+    can separate). Making THESE FOUR GRAPHS carry it is a different and much more
+    expensive thing: it needs states the reconciler itself never produces, so it
+    needs a NEW SEED or a NEW FAULT DIMENSION - a writer corrupting the
+    ongoing-reconcile local state, or the foreign-owned object :112's reject path
+    needs, or the foreign-sourced pending request :49 needs - and {b any of those
+    moves the shared graphs and every committed P13-P23 pin with them}
+    (76/464/744/1976/116; 88/808/1144/10216 with gates 20/276/96/2080; P23 gates
+    68/560/816/7920 and decoded 76/680/1056/8872). A moved pin is a phase-STOP,
+    so this leg adds nothing, and the decision rides into P25 alongside :49's and
+    :112's unobserved directions. The full record, with the per-row table, is
+    BUILD-SPEC-P24 section 0.5 and the DELETION block in {!State_predicates}. *)

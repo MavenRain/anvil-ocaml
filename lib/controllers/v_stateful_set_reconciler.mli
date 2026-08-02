@@ -127,6 +127,28 @@ val get_largest_unmatched_pods :
 (** Anvil: the largest-ordinal needed pod whose spec no longer matches the
     template ([None] when all match). *)
 
+val objects_to_pods : Dynamic_object.t list -> Pod.t list option
+(** Anvil [objects_to_pods]: [Some] all-unmarshalled pods, or [None] if any
+    element is not a pod.
+
+    Exported for the same assurance-consumer role as the eight helpers above:
+    {!Assurance.State_predicates} renders upstream
+    [state_predicates.rs:132] with it. Pure visibility - the [.ml] body is
+    untouched - and it mirrors [vreplica_set_reconciler.mli:60], which exports
+    that controller's own identically-named helper. It is {b not} the
+    [pvc_name_matches] situation (local_binding.mli:108-121, REFUSE-and-exclude):
+    that predicate had two existing copies and was proven unreachable on every
+    shipped graph, whereas this one has zero existing VSTS copies and is live
+    production logic (:537 of the [.ml]).
+
+    {b Shadowing caveat.} Nothing in the tree currently does
+    [open V_stateful_set_reconciler] (only [Vreplica_set_reconciler], five
+    times, all in [invariants.ml]), so there is no collision today. But
+    warnings 44 and 45 are disabled in all three dune stanzas
+    ([lib/assurance/dune], [lib/checker/dune], [test/dune]), so a future
+    co-[open] of both reconcilers would shadow this binding {e silently}. Call
+    it qualified. *)
+
 (** The reconciler as a {!Reconciler.RECONCILER}, re-exporting the four members
     at [ereq = eresp = Io.void] so the pack can erase it via {!Erase.Void_erase}. *)
 module R :

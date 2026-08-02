@@ -120,7 +120,7 @@
 
    MB8  THE BARE-SOURCE TRAP, a documentation-integrity control (in-test, RUNS
         BELOW): append a parenthetical qualifier to a source string. PREDICT:
-        [t_p21_regression]'s [line_of_source] (:358-362) returns [None], the
+        [t_p21_regression]'s [line_of_source] (:479-483) returns [None], the
         member silently DROPS OUT of [roster_guarantee_lines], and a firewall
         phrased only as "no EXCLUDED line is shipped" still PASSES while the
         member is invisible. That vacuous green is the failure this row
@@ -774,7 +774,7 @@ let test_mb7_pvcs_pin_reddens () =
          decoded_pvcs_non_empty f.cs))
 
 (* ==== MB8: the BARE-SOURCE TRAP, exhibited =================================
-   A verbatim copy of [t_p21_regression.ml:353-362]'s parser - the guarded-total
+   A verbatim copy of [t_p21_regression.ml:474-483]'s parser - the guarded-total
    [sub_opt] and [line_of_source]. Copied rather than shared, because the point
    of the row is what THAT parser does; a shared helper that drifted would take
    the exhibit with it. *)

@@ -1209,3 +1209,84 @@ let check_local_binding_under_faults ?(depth = default_depth)
              && List.exists
                   (fun (i : Invariants.invariant) -> i.interesting f.cs)
                   invs)))
+
+(* ---- P24: the VSTS state-predicate leg ---- *)
+
+(* P24 leg (BUILD-SPEC-P24 §2-§3, settled by
+   ~/Documents/anvil-ocaml-p24-harness/RULING.md): the NEW VSTS state-predicate
+   register ({!State_predicates.predicate_family} - M1 [local_state_is_valid],
+   liveness/state_predicates.rs:192; M3 [resp_msg_is_ok_list_resp_of_pods]
+   :107) over the SAME P22/P23 scale-down graph family.
+   {!check_local_binding_under_faults}'s clone with exactly ONE line changed -
+   the [invs] binding - so the seed ({!Scenario.vsts_seed_with_pods}), the CR
+   ({!Scenario.vsts}), the depth, the {!faulted_successors} product, the
+   {!violated_of} naming and the [require_fault]/{!budget_fault_taken} gate are
+   all the sibling leg's, verbatim.
+
+   THE REGISTER IS TWO MEMBERS, AND THE THIRD IS A RECORDED FINDING RATHER THAN
+   AN OMISSION. A third candidate - upstream [req_msg_is_list_pod_req] :45
+   closed by [pending_list_pod_req_in_flight] :59-66 - was written, run on this
+   leg, measured and mutation-tested, and is CUT: rendered as an invariant over
+   these four graphs it is entirely contained in P23's L2. The full record,
+   including the measurement (:49 unwitnessed, complement 0 over denominators
+   16 / 112 / 288 / 1560) and what would be needed to buy it, is in
+   {!State_predicates}'s interface; the leg's own doc block in fault_check.mli
+   carries the consumer-facing half.
+
+   THE FAMILY IS ASSERTED ALONE. Not unioned with
+   [Local_binding.binding_family], not with
+   [Internal_guarantee.guarantee_family], not with
+   [Invariants.cluster_structural], not with [Invariants.always], not with
+   [Vsts_invariants.always]. This is the P15 MASKING TRAP, already forbidden
+   in-tree at :476-482: [~violated] is [violated_of invs] resolving through
+   [Invariants.first_violated] (:249-258 -> invariants.ml:1046), which is the
+   FIRST match in LIST ORDER, so a unioned member masks the phase headline and
+   the leg never evaluates the member the phase exists to measure. Unioning
+   THIS family with P23's would be wrong twice over, and the cut member is the
+   demonstration: five of its seven conjuncts WERE L2's, so under a union L2
+   would have sat ahead of it in list order and taken the name on precisely the
+   conjuncts it did not claim. "Union" in the gate below means the OR over the
+   register's OWN two members ([List.exists ... invs]), never a union of two
+   families. A [violated] naming a P21, P23 or structural member on this leg
+   means the lists were unioned somewhere: a harness bug, not a finding.
+
+   PIN SAFETY, structural rather than hoped for. [run_leg] calls
+   [Model_check.explore] with only [~depth ~successors ~equal ~hash ~init]
+   (:274-279) and [explore] takes no invariant argument
+   (model_check.mli:57-63); [fault_metadata] (:202-233) reads only
+   [~bound ~budget ~cluster ~controller_id]. GRAPHS ARE FAMILY-BLIND, so a new
+   leg that reuses [(seed, bound, budget, depth)] cannot move any committed
+   graph. The bound is the CALLER's own; no committed pin input - [p13_bound],
+   [p21_bound], [p22_bound], [p23_bound], [Bound.default],
+   [Scenario.vsts_seed_faults], [Scenario.vsts_cluster],
+   [Scenario.controller_id], [Cluster.enabled_successors],
+   {!faulted_equal}/{!faulted_hash} - is touched. The shared [faulted] state
+   block (:37-145) is consumed AS-IS and is deliberately NOT widened for this
+   leg: widening it would perturb all fourteen legs' graphs at once. A moved
+   pin is a phase-STOP, never a retune. *)
+let check_state_predicates_under_faults ?(depth = default_depth)
+    ?(req_drop = false) ?(pod_monkey = false) (bound : Bound.t)
+    (budget : budget) ~(desired : int) ~(ordinals : int list)
+    ~(require_fault : bool) : fault_report =
+  let controller_id = Scenario.controller_id in
+  let cluster = Scenario.vsts_cluster in
+  let seed =
+    Scenario.vsts_seed_with_pods ~desired ~ordinals ~crash:true ~req_drop
+      ~pod_monkey ()
+  in
+  let cr = Scenario.vsts ~desired () in
+  let invs = State_predicates.predicate_family ~cr ~controller_id in
+  let inv = Invariants.conjunction invs in
+  run_leg ~depth ~bound ~budget ~cluster ~controller_id ~seed
+    ~check:(fun reach ->
+      Model_check.check_safety reach
+        ~inv:(fun (f : faulted) -> inv f.cs)
+        ~equal:faulted_equal)
+    ~violated:(violated_of invs)
+    ~gate:(fun reach ->
+      Some
+        (Model_check.count_states_where reach (fun (f : faulted) ->
+             ((not require_fault) || budget_fault_taken budget f)
+             && List.exists
+                  (fun (i : Invariants.invariant) -> i.interesting f.cs)
+                  invs)))

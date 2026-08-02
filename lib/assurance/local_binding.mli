@@ -306,10 +306,10 @@ val binding_sources : string list
     {b BOTH ARE BARE, and that is LOAD-BEARING AND SILENT WHEN VIOLATED.} No
     parenthetical qualifier, ever - not ["...:613 (needed+condemned only)"], not
     the [vsts_invariants.ml:217] style, nothing.
-    [t_p21_regression.ml:358-362] extracts the line number with
+    [t_p21_regression.ml:479-483] extracts the line number with
     [String.rindex_opt s ':'] fed to [int_of_string_opt]; a qualifier makes that
     return [None], the member silently DROPS OUT of [roster_guarantee_lines]
-    ([:366-374]), {b and the E-ledger firewall pin at [:385-396] still PASSES
+    ([:497-499]), {b and the E-ledger firewall pin at [:565-573] still PASSES
     while the member is invisible}. That is a vacuously-green pin, this
     project's named failure mode. The four in-tree members at
     internal_guarantee.ml:377/:396/:416/:436 carry exactly this bare shape; the

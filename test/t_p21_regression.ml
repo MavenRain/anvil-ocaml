@@ -109,6 +109,7 @@ module Mp = Anvil_assurance.Msg_provenance
 module Rely = Anvil_assurance.Rely_conditions
 module Ig = Anvil_assurance.Internal_guarantee
 module Lb = Anvil_assurance.Local_binding
+module Sp = Anvil_assurance.State_predicates
 
 let controller_id : int = Scenario.controller_id
 let cluster : Cluster.t = Scenario.vsts_cluster
@@ -256,6 +257,18 @@ let p21_label : string =
    has to be the whole roster. *)
 let p23_label : string = "Local_binding.binding_family (P23)"
 
+(* P24's register, ADDED TO THIS ROSTER for exactly the reason the P23 comment
+   above gives, and the reason survives verbatim one phase on: the E-ledger
+   reversal clause below sweeps [roster_pairs], which is built from THIS
+   literal list, so a shipped family that is not in it is not swept. P24's
+   two sources are [.../liveness/state_predicates.rs:NNN] and therefore
+   cannot bear the [guarantee_prefix] the clause filters on - the addition is
+   inert for the ledger BY MEASUREMENT (t_p24_regression's source-file
+   partition case measures it) rather than by intention - but the entry still
+   has to exist, because the roster is also what the disjointness sweep and the
+   coverage rows below read. *)
+let p24_label : string = "State_predicates.predicate_family (P24)"
+
 let shipped_suites : (string * Invariants.invariant list) list =
   let vrs = Scenario.vrs ~desired:1 in
   let vsts = Scenario.vsts ~desired:1 () in
@@ -277,6 +290,7 @@ let shipped_suites : (string * Invariants.invariant list) list =
     (p20_label, Rely.rely_family);
     (p21_label, family);
     (p23_label, Lb.binding_family ~cr:vsts ~controller_id);
+    (p24_label, Sp.predicate_family ~cr:vsts ~controller_id);
   ]
 
 (* The roster's LABELS, committed as a literal list: a verbatim copy of the
@@ -298,6 +312,7 @@ let committed_roster : string list =
     p20_label;
     p21_label;
     p23_label;
+    p24_label;
   ]
 
 let others : (string * Invariants.invariant list) list =
@@ -312,25 +327,51 @@ let roster_pairs : (string * string) list =
       Pair_guard.pairs_of invs)
     shipped_suites
 
+(* THE COVERAGE FILTER, in its two forms. The PAIRS form is the one with teeth:
+   fed a list of COMMITTED (name, source) literals it asks whether the roster's
+   LIVE inventory still contains them. The INVARIANT-LIST form below re-derives
+   the pairs from a family, and when that family is one the roster itself was
+   built from it filters [roster_pairs] against a list it is part of, so it can
+   return nothing but [[]] - the P22 review recorded that as finding F2, and
+   t_p24_regression.ml:550-556 states it by name. The P19/P20/P21/P23 rows keep
+   the derived form because it is what they have always asserted; the P24 row
+   below is written against literals. *)
+let missing_pairs_from_roster (pairs : (string * string) list) :
+    (string * string) list =
+  List.filter (fun (p : string * string) -> not (List.mem p roster_pairs)) pairs
+
 let missing_from_roster (invs : Invariants.invariant list) :
     (string * string) list =
-  List.filter
-    (fun (p : string * string) -> not (List.mem p roster_pairs))
-    (Pair_guard.pairs_of invs)
+  missing_pairs_from_roster (Pair_guard.pairs_of invs)
+
+(* P24's two members as COMMITTED (name, source) LITERALS - re-typed here, and
+   deliberately NOT read back out of {!Sp.predicate_family} or
+   {!Sp.predicate_sources}. This list is the fixed point of the P24 coverage
+   row below: a dropped roster entry, a renamed member and a drifted source all
+   redden against it, and none of the three can redden against a list recomputed
+   from the same value the roster entry holds. *)
+let committed_predicate_pairs : (string * string) list =
+  [
+    ( "vsts_local_state_is_valid",
+      "vstatefulset_controller/proof/liveness/state_predicates.rs:192" );
+    ( "vsts_pending_list_pod_resp_in_flight",
+      "vstatefulset_controller/proof/liveness/state_predicates.rs:107" );
+  ]
 
 let test_roster_covers_p19_p20_and_p21 () =
   Alcotest.(check (list string))
-    "the roster is FOURTEEN suites - t_p20_regression's twelve PLUS \
-     guarantee_family PLUS P23's binding_family (a verbatim copy of the P20 \
-     roster reddens here, and so does a P23 landing that forgot this entry - \
-     see the E-ledger clause below, which sweeps this very list)"
+    "the roster is FIFTEEN suites - t_p20_regression's twelve PLUS \
+     guarantee_family PLUS P23's binding_family PLUS P24's predicate_family (a \
+     verbatim copy of the P20 roster reddens here, and so does a P23 or P24 \
+     landing that forgot its entry - see the E-ledger clause below, which \
+     sweeps this very list)"
     committed_roster
     (List.map
        (fun ((label, _) : string * Invariants.invariant list) -> label)
        shipped_suites);
   Alcotest.(check int)
-    "thirteen suites are swept (the P21 self-entry is excluded; the P20 and \
-     P23 entries are IN the swept set)"
+    "fourteen suites are swept (the P21 self-entry is excluded; the P20, P23 \
+     and P24 entries are IN the swept set)"
     (List.length committed_roster - 1)
     (List.length others);
   (* COVERAGE, read off the LIVE records rather than off the labels: every
@@ -353,7 +394,29 @@ let test_roster_covers_p19_p20_and_p21 () =
     "every P23 binding member is covered by the roster - the entry the ledger \
      clause depends on is really there"
     []
-    (missing_from_roster (Lb.binding_family ~cr:(Scenario.vsts ~desired ()) ~controller_id))
+    (missing_from_roster (Lb.binding_family ~cr:(Scenario.vsts ~desired ()) ~controller_id));
+  (* THE P24 COVERAGE ROW, added for the same reason as P23's, with one
+     difference stated honestly and one defect NOT repeated. The difference:
+     P24's sources are [.../liveness/state_predicates.rs:NNN], so this entry can
+     never reach the guarantee-prefix filter below; what it IS load-bearing for
+     is the sweep in the previous case and the coverage claim here.
+
+     THE DEFECT NOT REPEATED (P22 review finding F2). Written the way the rows
+     above are - [missing_from_roster (Sp.predicate_family ...)] - this row
+     would filter [roster_pairs] against pairs recomputed from the very value
+     the roster entry holds, so it could return nothing but [[]]: green if the
+     entry were dropped from [shipped_suites], green if a member were renamed,
+     green if a source drifted. Against the COMMITTED literals all three redden,
+     and the third is the one the E-ledger machinery actually depends on - a
+     drifted source is exactly what makes a member invisible to a parser that
+     splits on the last colon. *)
+  Alcotest.(check (list (pair string string)))
+    "every COMMITTED P24 state-predicate pair is in the roster's LIVE \
+     inventory - keyed on literals, never on the family the roster entry \
+     itself holds, so a dropped entry or a drifted source reddens instead of \
+     passing vacuously (P22-review F2)"
+    []
+    (missing_pairs_from_roster committed_predicate_pairs)
 
 (* THE MASKING-TRAP GUARD (P14-P16/P18-P20 pattern). A P21 member found in
    ANY shipped suite means prior pins are no longer measuring what they
@@ -378,8 +441,8 @@ let leaks_against (suites : (string * Invariants.invariant list) list) :
 
 let test_family_is_disjoint_from_shipped_suites () =
   Alcotest.(check (list string))
-    "no P21 guarantee member shares a name or source with any of the thirteen \
-     other shipped suites (both argument orders, incl. P20's and P23's)"
+    "no P21 guarantee member shares a name or source with any of the fourteen \
+     other shipped suites (both argument orders, incl. P20's, P23's and P24's)"
     []
     (leaks_against others);
   (* The sweep is SEEN red-capable: the same detector, run against the
@@ -493,7 +556,9 @@ let test_e_ledger_reversal_clause () =
     (List.length roster_guarantee_lines);
   Alcotest.(check (list int))
     "the ONLY internal_rely_guarantee.rs lines shipped anywhere in the \
-     FOURTEEN-suite roster are G1-G4's and P23's L1 :613 / L2 :640 (the \
+     FIFTEEN-suite roster are G1-G4's and P23's L1 :613 / L2 :640 - P24's \
+     two sources name liveness/state_predicates.rs and cannot reach this \
+     filter at all (the \
      re-partition: 4 shipped + 5 excluded -> 6 shipped + 3 excluded, \
      PRE-AUTHORIZED by BUILD-SPEC-P22.md:279-281)"
     P21_witness.ledger_shipped_lines roster_guarantee_lines;
@@ -535,12 +600,12 @@ let () =
              source) pairs"
             `Quick test_family_names_and_pairs;
           Alcotest.test_case
-            "the roster is FOURTEEN suites and really covers P19, P20, P21 \
-             and P23 (the entry the ledger clause sweeps)"
+            "the roster is FIFTEEN suites and really covers P19, P20, P21, \
+             P23 and P24 (the entry the ledger clause sweeps)"
             `Quick test_roster_covers_p19_p20_and_p21;
           Alcotest.test_case
             "family DISJOINT from every other shipped suite (Pair_guard, \
-             both orders; P20 now in the swept set)"
+             both orders; P20, P23 and P24 in the swept set)"
             `Quick test_family_is_disjoint_from_shipped_suites;
         ] );
       ( "exclusion_pins",
