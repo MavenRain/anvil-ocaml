@@ -5,7 +5,7 @@
    [vstatefulset_controller/proof/internal_rely_guarantee.rs] as EXCLUDED on the
    ground that the port's [Controller.ongoing_reconcile.local_state] is an
    untyped [Value.t] and the VSTS reconcile step is not exposed
-   (BUILD-SPEC-P21 §2.2, internal_guarantee.mli:167-171). Both halves are false
+   (BUILD-SPEC-P21 §2.2, internal_guarantee.mli:160-204). Both halves are false
    today: [pending_req_msg : Message.t option] is exposed (controller.mli:57)
    and the typed state is reachable through
    [V_stateful_set_pack.unmarshal_state] (v_stateful_set_pack.mli:16) onto the
@@ -15,9 +15,10 @@
    The three upstream functions are NESTED, not overlapping:
    - E3 :606-611  [local_pods_and_pvcs_are_bound_to_vsts] - the LIFT of E5 over
      every VSTS-kind key in [ongoing_reconciles]; one conjunct, six-line body.
-     EXCLUDED (§2.2): every shipped scenario is single-CR, so the lift collapses
-     to L2-at-the-scenario-key. That is "L2 wearing a hat", the exact ground
-     P21 used for its own E1.
+     EXCLUDED through P24 (§2.2): every shipped scenario was single-CR, so the
+     lift collapsed to L2-at-the-scenario-key. That is "L2 wearing a hat", the
+     exact ground P21 used for its own E1. SHIPPED by P25 over the committed
+     multi-CR graphs, via [holds_at_key] (BUILD-SPEC-P25 §1.1).
    - E4 :613-638  a pure [(cr_key, local_state) -> bool] - SHIPPED here as L1.
    - E5 :640-664  E4 at the decoded local state, plus the [AfterListPod]
      pending/in-flight block - SHIPPED here as L2 (it calls E4 at :642).
@@ -256,7 +257,10 @@ let is_after_list_pod (st : V_stateful_set_reconciler.s) : bool =
    unguarded (:641). The port has no total map, so the absent-key case folds to
    [~absent]. This is a rendering narrowing, not fidelity, and it is disclosed
    in the .mli in those words. [Object_ref_map.for_all] is deliberately NOT used
-   here: that is E3's lift, which this phase EXCLUDES.
+   here: that is E3's lift, which P23 excluded and P25 un-excluded - by calling
+   OUT to this module ([holds_at_key], consumed by internal_guarantee.ml's
+   standalone E3 value), not by duplicating the lift into it (BUILD-SPEC-P25
+   §1.1).
 
    [~undecodable] mirrors Verus's unconstrained [unmarshal(...)->Ok_0] on a
    non-[Ok]: the house out-of-premise rule already stated at
@@ -284,6 +288,21 @@ let at_reconcile ~(controller_id : int) ~(cr_key : Common.object_ref)
         (V_stateful_set_pack.unmarshal_state orc.local_state)
         ~error:(fun _ -> undecodable)
         ~ok:(fun (st : V_stateful_set_reconciler.s) -> decoded orc st s))
+
+(* P25 §1.1: L2's decoded predicate at an ARBITRARY key, by partial-applying the
+   existing [at_reconcile] skeleton - the ONE exported hook that lets
+   {!Internal_guarantee}'s E3 lift fold L2 over every VSTS-kind key of
+   [Cluster.ongoing_reconciles] without a third copy of L1/L2's body. Doc
+   comment in the .mli. *)
+let holds_at_key ~(controller_id : int) ~(cr_key : Common.object_ref)
+    (s : Cluster.cluster_state) : bool =
+  at_reconcile ~controller_id ~cr_key ~absent:true ~undecodable:true
+    ~decoded:(fun (orc : Controller.ongoing_reconcile)
+                  (st : V_stateful_set_reconciler.s) (s : Cluster.cluster_state) ->
+      bound_in_local_state ~key_name:cr_key.Common.name
+        ~key_namespace:cr_key.Common.namespace st
+      && step_binding ~namespace:cr_key.Common.namespace orc st s)
+    s
 
 (* The upstream source literals, in member order L1, L2. BOTH ARE BARE: no
    parenthetical qualifier, ever. [t_p21_regression.ml:479-483] extracts the

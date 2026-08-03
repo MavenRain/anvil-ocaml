@@ -40,7 +40,10 @@
     - {b M1} [local_state_is_valid] (:192-249), cited {b :192}. Fourteen of its
       twenty-three conjuncts PORT; {b nine} are EXCLUDED-WITH-A-PIN - seven on
       the PVC pin (a SHAPE ground) and two, :241 and :246, on a REACHABILITY
-      ground of this phase's own.
+      ground of this phase's own. P25 later measured eight of the nine (the
+      seven plus :246) premise-OCCUPIED on L0v at [vct:true] and re-filed
+      them RED-CAPABILITY-PENDING; only :241's ground survives [vct:true]
+      unchanged. See the grounds below.
     - {b M3} [resp_msg_is_ok_list_resp_of_pods] (:107-133) closed over the
       cluster state by [pending_list_pod_resp_in_flight] (:70-85), cited
       {b :107}. Its {b SEVEN PURE-SHAPE conjuncts SHIP} (:115, :126, :127, :128,
@@ -65,30 +68,51 @@
     reports that P23 already covers it.
 
     {b THE PHASE HAS ELEVEN EXCLUSIONS AND THEY REST ON THREE DIFFERENT
-    GROUNDS. A consumer who reads "excluded with a pin" as one thing is wrong
-    about seven of them.}
+    GROUNDS ON THESE FOUR GRAPHS - P25 ADDED A FOURTH NAME FOR THE
+    [vct:true]-FACING STATUS OF EIGHT OF THEM. A consumer who reads
+    "excluded with a pin" as one thing is wrong about seven of them.}
 
     - {b SHAPE} - the PVC pin [P23_witness.pvcs_non_empty_everywhere = 0]. The
-      guarded configuration is unreachable because no shipped seed builds it.
-      {b SEVEN M1 conjuncts}: :197, :198, :199, :215-221, :223-228, :233, :244
-      (with the :193 [pvc_cnt] binding they all read). Landing a [vct:true] leg
-      retires this pin and brings all seven back at once.
+      guarded configuration is unreachable because no seed of THESE four
+      graphs builds it. {b SEVEN M1 conjuncts}: :197, :198, :199, :215-221,
+      :223-228, :233, :244 (with the :193 [pvc_cnt] binding they all read).
+      Landing a [vct:true] leg retires this pin and brings all EIGHT
+      PVC-family conjuncts back at once - these seven AND :246, not seven;
+      P25 measured exactly that on L0v (the RED-CAPABILITY-PENDING ground
+      below).
     - {b REACHABILITY} - a step-occupancy zero on THIS phase's four graphs. The
       guard never fires, so the conjunct is a green that could not have been
       red. {b TWO M1 conjuncts}: :241 (pinned by
-      [P24_witness.after_delete_outdated_occupancy_everywhere = 0]) and :246
-      (whose [pvc_index] is only ever mutated inside the unreachable
-      [Get_pvc] family, so it sits at a vacuous [0 == 0] forever). :246 is
-      PVC-FAMILY by subject but does {e not} die on the PVC pin.
+      [P24_witness.after_delete_outdated_occupancy_everywhere = 0], and STILL
+      zero on P25's L0v) and :246 (whose [pvc_index] is only ever mutated
+      inside the [Get_pvc] family, unreachable on every [vct:false] graph, so
+      it sits at a vacuous [0 == 0] HERE - P25 measured it LIVE at
+      [vct:true]; see below). :246 is PVC-FAMILY by subject but does {e not}
+      die on the PVC pin.
     - {b SCOPE} - upstream's own stated assumption does not hold in this port.
       The conjunct is not vacuous and not unreachable; it was RENDERED, RUN and
       REFUTED, and it is excluded because asserting it here asserts upstream's
       predicate outside the scope upstream gives it. {b TWO M3 conjuncts}:
       :116-118 and :119-124.
+    - {b RED-CAPABILITY-PENDING} (added by P25) - the premise is proven
+      non-vacuous (occupancy measured nonzero on L0v, P18's committed
+      116-state [vct:true] graph) but no mutant has yet been shown to redden
+      the conjunct at any occupied state, so it is neither a proven invariant
+      nor a proven vacuity. {b EIGHT M1 conjuncts under vct:true}: :197,
+      :198, :199, :215-221, :223-228, :233, :244, :246 - all eight, because
+      landing a [vct:true] leg retires the SHAPE ground (the PVC pin itself
+      reddens) for all eight at once, not seven; see the corrected count
+      below. They stay excluded until a named mutant (corrupt the
+      Create_pvc/Skip_pvc guard, or the [pvc_index] derivation) is run
+      against L0v and shown to redden at least one. The occupancy pins are
+      [P25_witness.l0v_get_pvc_family_occupancy = 40] and
+      [P25_witness.l0v_246_premise_nonvacuity = 8], asserted by
+      [t_p25_state_predicates].
 
     The first two grounds pin a VACUITY. The third pins a MEASURED REFUTATION
     WITH ATTRIBUTION, which is a stronger obligation and is discharged with
-    stronger evidence - see the M3 section.
+    stronger evidence - see the M3 section. The fourth pins a MEASURED
+    NON-VACUITY whose red capability is PENDING (the P26 mutant named above).
 
     {b SOURCE-STRING RULE.} Each [source] names the upstream [pub open spec fn]
     whose {e conjuncts} the member renders, not the wrapper that lifts them to a
@@ -111,10 +135,16 @@
     single-pin exclusion. The NINTH is {b :241}, added before the phase sealed
     on stage B's own measurement, and it does {e not} rest on the PVC pin at
     all: it is excluded on REACHABILITY - a green that could not have been red.
-    {b :246 and :241 SHARE that reachability ground; the other SEVEN rest on the
-    PVC pin.} A consumer who reads "nine excluded, one pin" is wrong about two
-    of them, and a consumer who retires the PVC pin (by landing a [vct:true]
-    leg) brings seven conjuncts back into scope, not nine.
+    {b :246 and :241 SHARE that reachability ground ON THESE GRAPHS; the other
+    SEVEN rest on the PVC pin.} A consumer who reads "nine excluded, one pin"
+    is wrong about two of them, and a consumer who retires the PVC pin (by
+    landing a [vct:true] leg) brings EIGHT conjuncts back into scope, not
+    seven (not nine): P25's C1 probe evaluated :246's [pvc_index = pvc_cnt]
+    equality at every premise-firing L0v state and it HELD on each, so :246
+    returns to scope WITH the seven - still excluded, no mutant has yet
+    shown red capability at an occupied state; see the
+    RED-CAPABILITY-PENDING ground above. Only :241 stays behind: its step
+    occupancy is zero even on L0v.
 
     - The eight PVC-family conjuncts are {b :197} ([pvc_index <= pvc_cnt]),
       {b :198}
@@ -123,8 +153,9 @@
       {b :233} ([AfterCreatePVC ==> pvc_index > 0]), {b :244}
       ([locally_at_step_or!(GetPVC, AfterGetPVC, CreatePVC, SkipPVC) ==>
       pvc_index < pvc_cnt]) and {b :246}, together with the :193 [pvc_cnt]
-      binding every one of them reads. The FIRST SEVEN die on the PVC pin;
-      :246 does not, for the reason two bullets down.
+      binding every one of them reads. The FIRST SEVEN die on the PVC pin
+      HERE; :246 does not, for the reason two bullets down; at [vct:true]
+      all EIGHT sit RED-CAPABILITY-PENDING together.
     - {b The pin is [P23_witness.pvcs_non_empty_everywhere = 0]}
       (p23_witness.ml:287), measured over {b 10,684} decoded states on all four
       committed graphs BL0/BLc/BLd/BLm. It is the identical pin P23 used to
@@ -133,17 +164,21 @@
       v_stateful_set_reconciler.ml:478-514: [Get_pvc] is entered only when
       [List.length state.pvcs > 0], and [state.pvcs] is always [[]] because
       [make_pvcs] (:292-296) folds an absent [volume_claim_templates], which is
-      exactly [vct:false] (scenario.ml:240-241) - the only shape any shipped leg
-      seeds. The moment a [vct:true] leg lands, that pin reddens and these SEVEN
-      conjuncts come back into scope together.
+      exactly [vct:false] (scenario.ml:240-241) - the only shape any of THESE
+      four legs seeds. The moment a [vct:true] leg lands, that pin reddens and
+      these SEVEN come back into scope together, with :246 making EIGHT -
+      P25 measured it on L0v (the RED-CAPABILITY-PENDING ground above).
     - {b :246 is excluded on a different, subtler ground and the distinction
       matters.} Its guarding steps ([CreateNeeded] / [UpdateNeeded]) {e are}
-      live. Its conclusion [pvc_index == pvc_cnt] is dead anyway, because
-      [pvc_index] is only ever mutated inside the unreachable [Get_pvc]-family
-      arms, so it sits at a vacuous [0 == 0] forever and no real mutation to
-      PVC-index tracking could turn it red. That is the house's
-      "green that could not have been red" defect condition - a REACHABILITY
-      exclusion, not a shape exclusion.
+      live. Its conclusion [pvc_index == pvc_cnt] is dead HERE anyway, because
+      [pvc_index] is only ever mutated inside the [Get_pvc]-family arms,
+      unreachable on every [vct:false] graph, so it sits at a vacuous
+      [0 == 0] on all four and no real mutation to PVC-index tracking could
+      turn it red on them. That is the house's "green that could not have
+      been red" defect condition - a REACHABILITY exclusion, not a shape
+      exclusion. At [vct:true] the index is LIVE and the equality was
+      EVALUATED and HELD (P25's C1, stage B); see the
+      RED-CAPABILITY-PENDING ground above.
 
     {b M1 - WHERE THE GENUINE NOVELTY IS.} :200-204 requires
     [name == Some(pod_name(parent, ord))], the {e exact} ordinal-indexed name,
@@ -164,9 +199,9 @@
     at {b 0 on all four graphs}, pinned as
     [P24_witness.after_delete_outdated_occupancy_everywhere = 0], so :241's
     guard never fires, its consequent is a green that could not have been red,
-    and it is EXCLUDED-WITH-A-PIN on that REACHABILITY ground - the same ground
-    :246 is excluded on, while the other SEVEN M1 exclusions rest on the PVC
-    pin and M3's two rest on the SCOPE ground.
+    and it is EXCLUDED-WITH-A-PIN on that REACHABILITY ground - the ground
+    :246 shared on these graphs, while the other SEVEN M1 exclusions rest on
+    the PVC pin and M3's two rest on the SCOPE ground.
 
     {b The pin is measured on THESE graphs and is NEVER inherited from P11.} The
     only other [After_delete_outdated = 0] pin in the tree is
@@ -664,14 +699,80 @@
       consumer went away, and a helper whose last consumer goes away goes with
       it. The M3c and M3d state-level mutation rows went too, and
       t_p24_mutation records where and why.
-    - {b RECORDED FOR P25, and this SUPERSEDES RULING §3.3(4)'s ship-fork
-      reading.} P25's :256 flagship is 114 lines of the same etcd-wide
-      correlation at much larger scale. It does {e not} inherit a rendered
-      precedent: it inherits this EXCLUSION and the rely-condition question
-      underneath it. Either P25 lands rely-condition machinery - at which point
-      these two conjuncts, [weakly_eq] with them, come back into scope together
-      and this pin retires - or it excludes :256 on the same SCOPE ground. It
-      may not commit an etcd-coherence conjunct without answering that first.
+    - {b :256 [local_state_is_coherent_with_etcd] IS EXCLUDED-WITH-A-PIN ON
+      THE SAME SCOPE GROUND AS :116-124, MEASURED THIS PHASE RATHER THAN
+      ARGUED. THIS SUPERSEDES THE FORWARD POINTER PREVIOUSLY HERE.} P25 did
+      not render :256's 114-line conjunct family; it measured whether
+      upstream's own etcd-coherence scoping (the same rely-condition gap that
+      excluded :116-124) already forecloses it, and the answer is yes.
+    - {b THE SCOPE GROUND, RESTATED FOR :256's OWN UPSTREAM TEXT.} Upstream
+      state_predicates.rs:252-255 carries this comment immediately above the
+      [pub open spec fn], quoted in full:
+
+      {v // coherence between local state and etcd state
+      // Note: there are many exceptions when the object is just updated or the index
+      // haven't been incremented yet
+      // message predicates for each exceptional states carry the necessary information
+      // to repair the coherence v}
+
+      Upstream does not assert this coherence unconditionally either: it
+      depends on MESSAGE-CARRIED repair information supplied by
+      exception-tracking machinery this port does not have - the identical
+      gap :569-585 already names for :116-124 ({b this port has no
+      rely-condition machinery}). :256 is not a new scope question; it is the
+      same one at larger scale.
+    - {b THE MEASUREMENT: EVERY PINNED FAILURE IS CLASS (d) - NO WRITE OF ANY
+      KIND IN FLIGHT.} [t_p25_probe_coherence] (probe-coherence-run.log)
+      reproduces the pinned SET-EQUALITY and COHERENCE fail populations
+      EXACTLY as a positive control (0/8/0/72 and 0/4/0/40 on
+      SP0/SPc/SPd/SPm) before classifying each fail state into four buckets:
+      (a) a rely-violating pod-monkey write in flight, (b) a monkey write
+      satisfying R1/R2, (c) a controller-sourced write with no monkey write,
+      (d) no write in flight at all. SET-EQUALITY: SPc {b 8/8} class (d),
+      SPm {b 72/72} class (d). COHERENCE: SPc {b 4/4} class (d), SPm
+      {b 40/40} class (d). {b a=b=c=0 on every graph, every conjunct.} 100%
+      of the pinned failure population is class (d).
+    - {b THE OVER-EXCLUSION COMPLEMENT: A RELY-GUARD WOULD BE WRONG IN BOTH
+      DIRECTIONS.} {b 144} SPm states carrying a rely-violating write in
+      flight PASS the etcd-coherence checks anyway. A guard built to exclude
+      "rely-violating write in flight" states would therefore wrongly exclude
+      144 states needing no exclusion, while doing nothing for the 124 (80
+      set-eq + 44 coherence) class-(d) failures, which have no write in
+      flight to key off of. The effective premise of such a rely-scoped
+      restoration is {b 8/60/48/672} (SPm's 816-state premise minus the 144
+      complement) - and the class-(d) failures sit INSIDE that narrowed
+      premise, not outside it, so scoping the restore to "no rely-violating
+      write in flight" rescues none of them.
+    - {b THE STRUCTURAL GROUND: AN IN-FLIGHT GUARD CANNOT SEE AN
+      ALREADY-CONSUMED WRITE.} Every class-(d) failure is, by construction of
+      the classification, a state with NO write of any kind outstanding: the
+      divergence is not a writer currently violating rely conditions, it is a
+      write - most plausibly a Delete, upstream's own rely-exempt request
+      kind (rely_guarantee.rs:26, "Deletion/UpdateStatus requests are
+      allowed"; ported at rely_conditions.ml:224-227/242-246) - that already
+      LANDED and was CONSUMED before the observation state, the identical
+      signature P24 attributed to :119-124's failures (mli:610-613, "the
+      response names an owned object whose key has since left etcd"). No
+      predicate evaluated AT the observation state, rely-scoped or not, can
+      see a write that is no longer in flight; the missing information is
+      exactly what upstream's :253-255 comment says is carried by message
+      predicates this port does not implement.
+    - {b :256 IS THEREFORE EXCLUDED-WITH-A-PIN ON THE SCOPE GROUND - THE
+      THIRD MEMBER OF THAT GROUP, alongside :116-118 and :119-124.} It does
+      not ship as a conjunct or a family this phase;
+      [weakly_eq]/[pod_spec_weakly_eq]-class comparison (rs:292) stays OUT
+      for the same reason mli:636-666 already gives. The REACHABILITY ground
+      (:241, :246) and the SHAPE ground (the other seven M1 PVC-family
+      conjuncts) are UNAFFECTED and UNCHANGED by this entry - :256 is a
+      distinct upstream member, not a re-partition of M1.
+    - {b THE PIN, in the wording a consumer may quote:} [P25_witness]'s
+      coherence-classification probe, run over SP0/SPc/SPd/SPm, asserts:
+      set-eq class-d 0/8/0/72, coherence class-d 0/4/0/40, a=b=c=0
+      everywhere, over-exclusion complement 0/0/0/144, effective premise
+      8/60/48/672. Literals live in test/p25_witness.ml; a
+      scope_exclusion_pin_256 Alcotest case in the P25 state-predicates test
+      file asserts all of it, mirroring t_p24_state_predicates.ml's
+      scope_exclusion_pin case exactly.
 
     {b M3 - THE OWNER REFERENCE IS AN [option] WHERE UPSTREAM'S IS TOTAL, AND
     THE FAMILY NO LONGER READS IT.} [V_stateful_set.controller_owner_ref]

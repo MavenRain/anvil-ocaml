@@ -247,8 +247,8 @@ let at_valid_step (step : V_stateful_set_reconciler.step) : bool =
    twenty-three conjuncts. The NINE EXCLUDED-WITH-A-PIN ones (:197 :198 :199
    :215-221 :223-228 :233 :244 :246, plus the :193 [pvc_cnt] binding they all
    read, and - since stage B measured it - :241) are enumerated in the .mli
-   with the pin that kills each; nothing about [pvcs] or [pvc_index] appears
-   below, and neither does [get_largest_unmatched_pods].
+   with the ground holding each out (P25: eight sit RED-CAPABILITY-PENDING);
+   nothing about [pvcs]/[pvc_index] or [get_largest_unmatched_pods] is below.
 
    Upstream's [needed_index]/[condemned_index] are [nat]. The port's fields are
    [int] (v_stateful_set_reconciler.mli:48, :50), so the [>= 0] half of :195 and
@@ -336,7 +336,7 @@ let local_state_is_valid ~(parent : string) ~(namespace : string)
      [Delete_outdated] itself non-zero on every graph as its positive control.
      Its guard can never fire, so its consequent
      ([get_largest_unmatched_pods(vsts, needed) is Some]) is a green that could
-     not have been red - the same defect condition :246 is excluded on. The pin
+     not have been red - the defect :246 shared at [vct:false]. The pin
      is measured on THESE graphs and is NEVER inherited from
      t_p11_vsts_liveness.ml:113-114, which is a different, smaller 20-state
      [fair:true] P11 graph. See the .mli. *)
@@ -402,7 +402,7 @@ let local_state_valid_witness (st : V_stateful_set_reconciler.s) : bool =
      [P24_witness.pending_src_not_controller_everywhere]. Upstream :49 is TRUE
      at every state at which it is evaluated. It is a GREEN THAT COULD NOT HAVE
      BEEN RED - this phase's own defect condition, the one that already excluded
-     :241, :246 and the eight PVC conjuncts.
+     :241 and the PVC family - eight now RED-CAPABILITY-PENDING (P25).
 
    WHY THE M2a' MUTANT DID NOT RESCUE IT. M2a' (swap [.src] for [.dst] in the
    ported :49) WAS run and DID redden the P24 leg with P23's leg green in the
@@ -623,14 +623,80 @@ let ok_list_resp_shape ~(namespace : string) (m : Message.t) : bool =
    MUTATION-KILLED, its SPEC arm was a recorded test gap, and it is gone as a
    CONSEQUENCE OF THE SCOPE EXCLUSION and not of any defect in it.
 
-   RECORDED FOR P25, superseding RULING §3.3(4)'s SHIP-fork reading. P25's :256
-   flagship is 114 lines of the same etcd-wide correlation at much larger
-   scale. It does NOT inherit a rendered precedent: it inherits this exclusion
-   and the rely-condition question underneath it. Either P25 lands
-   rely-condition machinery (at which point these two conjuncts, [weakly_eq]
-   with them, come back into scope together and this pin retires), or it
-   excludes :256 on the same SCOPE ground - and it may not commit an
-   etcd-coherence conjunct without answering that first. *)
+   THE :256 ANSWER, the ordered mirror of the pin block landed at
+   state_predicates.mli:667-740 (BUILD-SPEC-P25 §1.2; this SUPERSEDES the
+   forward pointer previously here):
+
+   - :256 [local_state_is_coherent_with_etcd] IS EXCLUDED-WITH-A-PIN ON THE
+     SAME SCOPE GROUND AS :116-124, MEASURED THIS PHASE RATHER THAN ARGUED.
+     P25 did not render :256's 114-line conjunct family; it measured whether
+     upstream's own etcd-coherence scoping (the same rely-condition gap that
+     excluded :116-124) already forecloses it, and the answer is yes.
+   - THE SCOPE GROUND, RESTATED FOR :256's OWN UPSTREAM TEXT. Upstream
+     state_predicates.rs:252-255 carries this comment immediately above the
+     [pub open spec fn], quoted in full:
+       // coherence between local state and etcd state
+       // Note: there are many exceptions when the object is just updated or
+       //   the index haven't been incremented yet
+       // message predicates for each exceptional states carry the necessary
+       //   information to repair the coherence
+     Upstream does not assert this coherence unconditionally either: it
+     depends on MESSAGE-CARRIED repair information supplied by
+     exception-tracking machinery this port does not have - the identical gap
+     :569-585 already names for :116-124 (this port has no rely-condition
+     machinery). :256 is not a new scope question; it is the same one at
+     larger scale.
+   - THE MEASUREMENT: EVERY PINNED FAILURE IS CLASS (d) - NO WRITE OF ANY
+     KIND IN FLIGHT. [t_p25_probe_coherence] (probe-coherence-run.log)
+     reproduces the pinned SET-EQUALITY and COHERENCE fail populations
+     EXACTLY as a positive control (0/8/0/72 and 0/4/0/40 on SP0/SPc/SPd/SPm)
+     before classifying each fail state into four buckets: (a) a
+     rely-violating pod-monkey write in flight, (b) a monkey write satisfying
+     R1/R2, (c) a controller-sourced write with no monkey write, (d) no write
+     in flight at all. SET-EQUALITY: SPc 8/8 class (d), SPm 72/72 class (d).
+     COHERENCE: SPc 4/4 class (d), SPm 40/40 class (d). a=b=c=0 on every
+     graph, every conjunct. 100% of the pinned failure population is
+     class (d).
+   - THE OVER-EXCLUSION COMPLEMENT: A RELY-GUARD WOULD BE WRONG IN BOTH
+     DIRECTIONS. 144 SPm states carrying a rely-violating write in flight
+     PASS the etcd-coherence checks anyway. A guard built to exclude
+     "rely-violating write in flight" states would therefore wrongly exclude
+     144 states needing no exclusion, while doing nothing for the 124 (80
+     set-eq + 44 coherence) class-(d) failures, which have no write in flight
+     to key off of. The effective premise of such a rely-scoped restoration
+     is 8/60/48/672 (SPm's 816-state premise minus the 144 complement) - and
+     the class-(d) failures sit INSIDE that narrowed premise, not outside it,
+     so scoping the restore to "no rely-violating write in flight" rescues
+     none of them.
+   - THE STRUCTURAL GROUND: AN IN-FLIGHT GUARD CANNOT SEE AN
+     ALREADY-CONSUMED WRITE. Every class-(d) failure is, by construction of
+     the classification, a state with NO write of any kind outstanding: the
+     divergence is not a writer currently violating rely conditions, it is a
+     write - most plausibly a Delete, upstream's own rely-exempt request kind
+     (rely_guarantee.rs:26, "Deletion/UpdateStatus requests are allowed";
+     ported at rely_conditions.ml:224-227/242-246) - that already LANDED and
+     was CONSUMED before the observation state, the identical signature P24
+     attributed to :119-124's failures (mli:610-613, "the response names an
+     owned object whose key has since left etcd"). No predicate evaluated AT
+     the observation state, rely-scoped or not, can see a write that is no
+     longer in flight; the missing information is exactly what upstream's
+     :253-255 comment says is carried by message predicates this port does
+     not implement.
+   - :256 IS THEREFORE EXCLUDED-WITH-A-PIN ON THE SCOPE GROUND - THE THIRD
+     MEMBER OF THAT GROUP, alongside :116-118 and :119-124. It does not ship
+     as a conjunct or a family this phase; [weakly_eq]/[pod_spec_weakly_eq]-
+     class comparison (rs:292) stays OUT for the same reason the .mli's
+     [weakly_eq] block already gives. The REACHABILITY ground (:241, :246)
+     and the SHAPE ground (the other seven M1 PVC-family conjuncts) are
+     UNAFFECTED and UNCHANGED by this entry - :256 is a distinct upstream
+     member, not a re-partition of M1.
+   - THE PIN, in the wording a consumer may quote: [P25_witness]'s
+     coherence-classification probe, run over SP0/SPc/SPd/SPm, asserts:
+     set-eq class-d 0/8/0/72, coherence class-d 0/4/0/40, a=b=c=0 everywhere,
+     over-exclusion complement 0/0/0/144, effective premise 8/60/48/672.
+     Literals live in test/p25_witness.ml; a scope_exclusion_pin_256 Alcotest
+     case in the P25 state-predicates test file asserts all of it, mirroring
+     t_p24_state_predicates.ml's scope_exclusion_pin case exactly. *)
 
 (* ---- the family ---------------------------------------------------------- *)
 

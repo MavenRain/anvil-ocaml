@@ -54,7 +54,9 @@
      below on where the SWEEP lives): the register's own two lines are in
      {!P21_witness.ledger_shipped_lines} and in NEITHER excluded bucket, and
      the partition is still TOTAL and DISJOINT at the file's nine
-     [pub open spec fn]: 6 shipped + E1 1 + E2 1 + E3 1.
+     [pub open spec fn]: 6 shipped + E1 1 + E2 1 + E3 1 at P23's landing,
+     7 shipped + E1 1 + E2 1 since P25's sanctioned re-partition shipped
+     E3 :606 (BUILD-SPEC-P25 §2).
 
    ---- what it does NOT do (anti-duplication, the P15-P22 rationale) --------
 
@@ -63,11 +65,14 @@
    does NOT duplicate the E-LEDGER REVERSAL SWEEP. That sweep - "every
    internal_rely_guarantee.rs line cited ANYWHERE in the roster is exactly the
    shipped set" - keeps its SINGLE ASSERTION SITE in t_p21_regression (the
-   house convention t_p22_regression.ml:93-96 names), which P23 EDITS: its
-   roster now carries the binding family, its shipped bucket is
-   [544; 562; 581; 589; 613; 640], its excluded bucket is E3 [606] alone, and
-   it gained the BARE-SOURCE COUNT assertion that makes a dropped-out member
-   loud. Before that edit the clause was passing VACUOUSLY - its roster was a
+   house convention t_p22_regression.ml:93-96 names), which P23 EDITED: its
+   roster gained the binding family, its shipped bucket became
+   [544; 562; 581; 589; 613; 640] with an excluded bucket of E3 [606] alone
+   (since P25's re-partition the shipped bucket is the 7-item
+   [544; 562; 581; 589; 606; 613; 640] and E1 :522 / E2 :528 are the only
+   excluded lines), and it gained the BARE-SOURCE COUNT assertion that makes a
+   dropped-out member loud. Before the P23 edit the clause was passing
+   VACUOUSLY - its roster was a
    LITERAL thirteen-suite list that never saw L1 or L2 - which is exactly the
    green-that-means-nothing shape this project keeps producing. What is pinned
    HERE is the ledger's CONSTANTS, not the roster sweep.
@@ -425,14 +430,17 @@ let test_family_is_disjoint_from_shipped_suites () =
    NOT the reversal SWEEP - that keeps its single assertion site in
    t_p21_regression (header). What is pinned here is the ledger's CONSTANTS
    against the register this phase actually ships: after P23 the partition of
-   [proof/internal_rely_guarantee.rs]'s nine [pub open spec fn] is
-   6 shipped + E1 1 + E2 1 + E3 1, still total and disjoint.
+   [proof/internal_rely_guarantee.rs]'s nine [pub open spec fn] was
+   6 shipped + E1 1 + E2 1 + E3 1, still total and disjoint; after P25's
+   sanctioned re-partition (BUILD-SPEC-P25 §2) it is 7 shipped + E1 1 + E2 1.
 
-   BUILD-SPEC-P22.md:279-281 PRE-AUTHORIZES this reversal in those words - it
-   records that t_p21_regression's clause "reds only if P23 ships E3-E5,
-   deliberately". So this is a RE-PARTITION, not a red. E3 :606 stays excluded
-   because it is the LIFT of E5 over every VSTS-kind key and every shipped
-   scenario is single-CR, so it collapses to "L2 wearing a hat". *)
+   BUILD-SPEC-P22.md:279-281 PRE-AUTHORIZED the P23 reversal in those words -
+   it records that t_p21_regression's clause "reds only if P23 ships E3-E5,
+   deliberately". So this was a RE-PARTITION, not a red. E3 :606 STAYED
+   excluded through P24 because it is the LIFT of E5 over every VSTS-kind key
+   and every shipped scenario was single-CR, so it collapsed to "L2 wearing a
+   hat"; P25 shipped it over the committed multi-CR graphs as a standalone
+   value in Internal_guarantee (BUILD-SPEC-P25 §1.1), outside this register. *)
 
 let sub_opt (s : string) (pos : int) (len : int) : string option =
   if pos >= 0 && len >= 0 && pos + len <= String.length s then
@@ -449,7 +457,6 @@ let binding_lines : int list = List.filter_map line_of_source Lb.binding_sources
 
 let ledgered_excluded_lines : int list =
   P21_witness.ledger_e1_lines @ P21_witness.ledger_e2_lines
-  @ P21_witness.ledger_e3_lines
 
 let test_e_ledger_repartition () =
   (* BARE-SOURCE first: if either source acquired a qualifier, [binding_lines]
@@ -463,9 +470,9 @@ let test_e_ledger_repartition () =
   Alcotest.(check (list int)) "the P23 lines are :613 and :640" [ 613; 640 ]
     binding_lines;
   Alcotest.(check (list int))
-    "the ledger's SHIPPED bucket is the re-partitioned six (G4 :544, G1 :562, \
-     G2 :581, G3 :589, L1 :613, L2 :640)"
-    [ 544; 562; 581; 589; 613; 640 ]
+    "the ledger's SHIPPED bucket is the re-partitioned seven (G4 :544, \
+     G1 :562, G2 :581, G3 :589, E3 :606, L1 :613, L2 :640)"
+    [ 544; 562; 581; 589; 606; 613; 640 ]
     P21_witness.ledger_shipped_lines;
   Alcotest.(check (list int))
     "every P23 line is now in the SHIPPED bucket" binding_lines
@@ -473,18 +480,19 @@ let test_e_ledger_repartition () =
        (fun (n : int) -> List.mem n P21_witness.ledger_shipped_lines)
        binding_lines);
   Alcotest.(check (list int))
-    "and in NEITHER excluded bucket - E3 :606 alone remains, and it is NOT \
-     shipped by this register (it is the lift, 'L2 wearing a hat')"
+    "and in NEITHER excluded bucket (E1 :522 / E2 :528) - E3 :606 left the \
+     excluded bucket when P25 shipped it elsewhere as a standalone value; \
+     this register still ships only :613 and :640"
     []
     (List.filter (fun (n : int) -> List.mem n ledgered_excluded_lines)
        binding_lines);
-  Alcotest.(check (list int)) "the excluded bucket is exactly E1 :522, E2 :528, \
-                               E3 :606"
-    [ 522; 528; 606 ]
+  Alcotest.(check (list int))
+    "the excluded bucket is exactly E1 :522, E2 :528"
+    [ 522; 528 ]
     (List.sort_uniq Int.compare ledgered_excluded_lines);
   Alcotest.(check int)
     "shipped + ledgered = the file's 9 pub open spec fn, no orphan and no \
-     double-ledgering (6 + 1 + 1 + 1)"
+     double-ledgering (7 + 1 + 1)"
     P21_witness.ledger_spec_fn_count
     (List.length
        (List.sort_uniq Int.compare
@@ -528,8 +536,9 @@ let () =
       ( "e_ledger_repartition",
         [
           Alcotest.test_case
-            "4 shipped + 5 excluded -> 6 shipped + 3 excluded, total and \
-             disjoint at NINE (PRE-AUTHORIZED by BUILD-SPEC-P22.md:279-281)"
+            "4 shipped + 5 excluded -> 6 shipped + 3 excluded -> 7 shipped + \
+             2 excluded, total and disjoint at NINE (PRE-AUTHORIZED by \
+             BUILD-SPEC-P22.md:279-281 and BUILD-SPEC-P25 §2)"
             `Quick test_e_ledger_repartition;
         ] );
     ]

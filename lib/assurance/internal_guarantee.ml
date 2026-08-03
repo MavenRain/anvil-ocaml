@@ -441,3 +441,36 @@ let guarantee_family ~(cr : V_stateful_set.t) ~(controller_id : int) :
     }
   in
   [ g1; g2; g3; g4 ]
+
+(* E3: upstream internal_rely_guarantee.rs:606-611, the LIFT of L2/E5 over every
+   VSTS-kind key of [Cluster.ongoing_reconciles]. Modeled structurally on
+   {!Invariants.unique_reconcile_id_invariant} (invariants.mli:44-49): a
+   controller_id-only single [Invariants.invariant], not a per-cr family member -
+   upstream's own signature takes only [controller_id], so [guarantee_family]'s
+   [~cr:V_stateful_set.t -> ...] shape (every existing G1-G4 member genuinely
+   consumes [~cr], internal_guarantee.mli:202-205) would be the wrong fit, not a
+   clean extension. [holds]/[interesting] are total, pure, exception-free;
+   [Object_ref_map.for_all]/[.exists] are the total-fold combinators (Map.S,
+   object_ref_map.ml:17), no wildcard on the two-arm kind check ([not (...)] is
+   the exhaustive complement of a single-constructor comparison, not a wildcard
+   match). *)
+let local_pods_and_pvcs_are_bound_to_vsts ~(controller_id : int) :
+    Invariants.invariant =
+  {
+    Invariants.name = "local_pods_and_pvcs_are_bound_to_vsts";
+    source = "vstatefulset_controller/proof/internal_rely_guarantee.rs:606";
+    holds =
+      (fun (s : Cluster.cluster_state) ->
+        Object_ref_map.for_all
+          (fun (k : Common.object_ref) (_orc : Controller.ongoing_reconcile) ->
+            (not (Common.equal_kind k.Common.kind V_stateful_set.kind))
+            || Local_binding.holds_at_key ~controller_id ~cr_key:k s)
+          (Cluster.ongoing_reconciles s controller_id));
+    interesting =
+      (* P14 N3 - OWN premise mirror, not L2's per-key interesting witness. *)
+      (fun (s : Cluster.cluster_state) ->
+        Object_ref_map.exists
+          (fun (k : Common.object_ref) (_orc : Controller.ongoing_reconcile) ->
+            Common.equal_kind k.Common.kind V_stateful_set.kind)
+          (Cluster.ongoing_reconciles s controller_id));
+  }

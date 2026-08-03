@@ -40,7 +40,7 @@
      that was never made to sweep the new members is worthless, and that is
      precisely the failure mode this project keeps producing.
 
-   - THE DISJOINTNESS SWEEP: [guarantee_family] against the other THIRTEEN
+   - THE DISJOINTNESS SWEEP: [guarantee_family] against the other FIFTEEN
      roster suites via {!Pair_guard.pair_leaks}, run in BOTH argument
      orders. The detector is either-component (a shared NAME or a shared
      SOURCE is a hit), so one order already covers both leak directions;
@@ -52,11 +52,11 @@
      for the whole-tree ledger sweep and it stays here (the convention
      t_p22_regression.ml:93-96 names); t_p23_regression pins the ledger's
      CONSTANTS but does not duplicate this sweep. Every
-     [proof/internal_rely_guarantee.rs] line cited anywhere in the fourteen
-     suites is collected and held to be exactly the SIX shipped ones -
-     G1-G4 plus P23's L1 :613 and L2 :640 - and a ledgered-excluded line
-     (E1 :522, E2 :528, E3 :606) appearing anywhere reddens and RE-OPENS the
-     exclusion. E2's :528 carries a special reading, disclosed: it is
+     [proof/internal_rely_guarantee.rs] line cited anywhere in the sixteen
+     suites is collected and held to be exactly the SEVEN shipped ones -
+     G1-G4 plus P23's L1 :613 / L2 :640 plus P25's E3 :606 - and a
+     ledgered-excluded line (E1 :522, E2 :528) appearing anywhere reddens and
+     RE-OPENS the exclusion. E2's :528 carries a special reading, disclosed: it is
      ALREADY SHIPPED semantically as P19's M1 under its
      [helper_invariants.rs:1213] citation (re-measured at P21: SEMANTICALLY
      IDENTICAL, one [is_controller_id] unfolding apart, bridged by upstream
@@ -65,11 +65,15 @@
 
    - THE RE-PARTITION IS NOT A RED, AND THAT WAS COMMITTED IN ADVANCE.
      BUILD-SPEC-P22.md:279-281 states verbatim that this clause "reds only if
-     P23 ships E3-E5, deliberately". P23 ships E4 :613 and E5 :640 and leaves
-     E3 :606 excluded (it is the LIFT of E5 over every VSTS-kind key, so on a
-     single-CR scenario it collapses to "L2 wearing a hat"). The buckets in
-     {!P21_witness} moved with it: [ledger_shipped_lines] gained :613/:640 and
-     [ledger_e3_e5_lines] became [ledger_e3_lines] = [[606]].
+     P23 ships E3-E5, deliberately". P23 shipped E4 :613 and E5 :640 and left
+     E3 :606 excluded (the LIFT of E5 over every VSTS-kind key, "L2 wearing a
+     hat" on a single-CR scenario); P25 shipped E3 :606 over the committed
+     multi-CR graphs (BUILD-SPEC-P25 §1.1, §2). The buckets in {!P21_witness}
+     moved with each phase: [ledger_shipped_lines] gained :613/:640 (P23) and
+     then :606 (P25); P23 RENAMED the joint E3/E4/E5 bucket down to an E3-only
+     bucket, and P25 renamed that bucket away entirely, so a stale reader of
+     either retired name fails to compile instead of silently reading a
+     narrower bucket.
 
    - THE BARE-SOURCE FIREWALL (BUILD-SPEC-P23 section 5, MB8). The clause's
      negative form - "no EXCLUDED line is shipped" - CANNOT SEE AN ABSENT
@@ -224,7 +228,7 @@ let test_family_names_and_pairs () =
   Alcotest.(check int) "guarantee_family cardinal"
     P21_witness.guarantee_cardinal (List.length family)
 
-(* ==== 3. THE ROSTER - fourteen suites, and the self-exclusion MOVED ======= *)
+(* ==== 3. THE ROSTER - sixteen suites, and the self-exclusion MOVED ======== *)
 
 (* Every list a shipped leg consumes, instantiated exactly as those legs
    instantiate them. The first TWELVE are t_p20_regression's roster (its
@@ -269,6 +273,16 @@ let p23_label : string = "Local_binding.binding_family (P23)"
    coverage rows below read. *)
 let p24_label : string = "State_predicates.predicate_family (P24)"
 
+(* P25's standalone E3 value, ADDED TO THIS ROSTER for the same reason as the
+   P23/P24 entries: the E-ledger reversal clause below sweeps [roster_pairs],
+   built from THIS literal list, so without this entry the clause could not
+   see the :606 citation and the exact-list check against the 7-item shipped
+   bucket would red while the sweep stayed green about nothing. A
+   single-member suite: E3 ships as a standalone [Invariants.invariant]
+   beside [guarantee_family], never inside it (BUILD-SPEC-P25 §1.1). *)
+let p25_e3_label : string =
+  "Internal_guarantee.local_pods_and_pvcs_are_bound_to_vsts (P25, E3)"
+
 let shipped_suites : (string * Invariants.invariant list) list =
   let vrs = Scenario.vrs ~desired:1 in
   let vsts = Scenario.vsts ~desired:1 () in
@@ -291,6 +305,7 @@ let shipped_suites : (string * Invariants.invariant list) list =
     (p21_label, family);
     (p23_label, Lb.binding_family ~cr:vsts ~controller_id);
     (p24_label, Sp.predicate_family ~cr:vsts ~controller_id);
+    (p25_e3_label, [ Ig.local_pods_and_pvcs_are_bound_to_vsts ~controller_id ]);
   ]
 
 (* The roster's LABELS, committed as a literal list: a verbatim copy of the
@@ -313,6 +328,7 @@ let committed_roster : string list =
     p21_label;
     p23_label;
     p24_label;
+    p25_e3_label;
   ]
 
 let others : (string * Invariants.invariant list) list =
@@ -360,18 +376,18 @@ let committed_predicate_pairs : (string * string) list =
 
 let test_roster_covers_p19_p20_and_p21 () =
   Alcotest.(check (list string))
-    "the roster is FIFTEEN suites - t_p20_regression's twelve PLUS \
-     guarantee_family PLUS P23's binding_family PLUS P24's predicate_family (a \
-     verbatim copy of the P20 roster reddens here, and so does a P23 or P24 \
-     landing that forgot its entry - see the E-ledger clause below, which \
-     sweeps this very list)"
+    "the roster is SIXTEEN suites - t_p20_regression's twelve PLUS \
+     guarantee_family PLUS P23's binding_family PLUS P24's predicate_family \
+     PLUS P25's standalone E3 value (a verbatim copy of the P20 roster \
+     reddens here, and so does a P23, P24 or P25 landing that forgot its \
+     entry - see the E-ledger clause below, which sweeps this very list)"
     committed_roster
     (List.map
        (fun ((label, _) : string * Invariants.invariant list) -> label)
        shipped_suites);
   Alcotest.(check int)
-    "fourteen suites are swept (the P21 self-entry is excluded; the P20, P23 \
-     and P24 entries are IN the swept set)"
+    "fifteen suites are swept (the P21 self-entry is excluded; the P20, P23, \
+     P24 and P25 entries are IN the swept set)"
     (List.length committed_roster - 1)
     (List.length others);
   (* COVERAGE, read off the LIVE records rather than off the labels: every
@@ -441,8 +457,9 @@ let leaks_against (suites : (string * Invariants.invariant list) list) :
 
 let test_family_is_disjoint_from_shipped_suites () =
   Alcotest.(check (list string))
-    "no P21 guarantee member shares a name or source with any of the fourteen \
-     other shipped suites (both argument orders, incl. P20's, P23's and P24's)"
+    "no P21 guarantee member shares a name or source with any of the fifteen \
+     other shipped suites (both argument orders, incl. P20's, P23's, P24's \
+     and P25's)"
     []
     (leaks_against others);
   (* The sweep is SEEN red-capable: the same detector, run against the
@@ -500,7 +517,6 @@ let roster_guarantee_lines : int list =
 
 let ledgered_excluded_lines : int list =
   P21_witness.ledger_e1_lines @ P21_witness.ledger_e2_lines
-  @ P21_witness.ledger_e3_lines
 
 let test_e_ledger_reversal_clause () =
   Alcotest.(check bool)
@@ -511,6 +527,19 @@ let test_e_ledger_reversal_clause () =
     "every P23 binding source names proof/internal_rely_guarantee.rs too" true
     (List.for_all (String.starts_with ~prefix:guarantee_prefix)
        Lb.binding_sources);
+  (* The P25 mirror of the clause above, over the STANDALONE E3 source - a
+     singleton list, because E3 ships beside [guarantee_family], not inside
+     it, and no e3-sources export exists. The MB8 rationale carries over: a
+     qualifier on the standalone source must redden LOUD here rather than
+     silently dropping :606 out of the parsed roster. *)
+  Alcotest.(check bool)
+    "every P25 E3 source names proof/internal_rely_guarantee.rs too" true
+    (List.for_all
+       (String.starts_with ~prefix:guarantee_prefix)
+       [
+         (Ig.local_pods_and_pvcs_are_bound_to_vsts ~controller_id)
+           .Invariants.source;
+       ]);
   (* THE POSITIVE CLAUSE, and why its two lines are typed as COMMITTED LITERALS
      rather than read back out of [Lb.binding_sources]. The self-derived shape -
      [List.filter_map line_of_source Lb.binding_sources] on BOTH sides - takes
@@ -526,12 +555,15 @@ let test_e_ledger_reversal_clause () =
      and "expected [613; 640], received [640]" names the member that went
      invisible, where the firewall's "6 vs 5" only says one of them did. *)
   Alcotest.(check (list int))
-    "the P23 members' lines 613 and 640 are PRESENT in the roster's parsed \
-     lines - the POSITIVE form, written against COMMITTED LITERALS because the \
-     negative excluded-lines filter below cannot see an ABSENT member and a \
-     self-derived expected value cannot see a QUALIFIED one"
-    [ 613; 640 ]
-    (List.filter (fun (n : int) -> List.mem n roster_guarantee_lines) [ 613; 640 ]);
+    "the P25 E3 line 606 and the P23 members' lines 613 and 640 are PRESENT \
+     in the roster's parsed lines - the POSITIVE form, written against \
+     COMMITTED LITERALS because the negative excluded-lines filter below \
+     cannot see an ABSENT member and a self-derived expected value cannot see \
+     a QUALIFIED one"
+    [ 606; 613; 640 ]
+    (List.filter
+       (fun (n : int) -> List.mem n roster_guarantee_lines)
+       [ 606; 613; 640 ]);
   (* ---- THE BARE-SOURCE FIREWALL, and why it is a COUNT ---------------------
      [line_of_source] is [String.rindex_opt ':'] fed to [int_of_string_opt], so
      a source carrying a parenthetical qualifier (the vsts_invariants.ml:217
@@ -549,34 +581,33 @@ let test_e_ledger_reversal_clause () =
     (List.length roster_guarantee_sources)
     (List.length roster_guarantee_lines);
   Alcotest.(check int)
-    "...and the surviving count IS the ledger's shipped cardinal (six after \
-     the P23 re-partition), so a member that vanished from the roster rather \
+    "...and the surviving count IS the ledger's shipped cardinal (seven after \
+     the P25 re-partition), so a member that vanished from the roster rather \
      than from the parser reddens here too"
     (List.length P21_witness.ledger_shipped_lines)
     (List.length roster_guarantee_lines);
   Alcotest.(check (list int))
     "the ONLY internal_rely_guarantee.rs lines shipped anywhere in the \
-     FIFTEEN-suite roster are G1-G4's and P23's L1 :613 / L2 :640 - P24's \
-     two sources name liveness/state_predicates.rs and cannot reach this \
-     filter at all (the \
-     re-partition: 4 shipped + 5 excluded -> 6 shipped + 3 excluded, \
-     PRE-AUTHORIZED by BUILD-SPEC-P22.md:279-281)"
+     SIXTEEN-suite roster are G1-G4's, P25's E3 :606 and P23's L1 :613 / \
+     L2 :640 - P24's two sources name liveness/state_predicates.rs and \
+     cannot reach this filter at all (the re-partition: 4 shipped + 5 \
+     excluded -> 6 shipped + 3 excluded -> 7 shipped + 2 excluded, \
+     PRE-AUTHORIZED by BUILD-SPEC-P22.md:279-281 and BUILD-SPEC-P25 §2)"
     P21_witness.ledger_shipped_lines roster_guarantee_lines;
   Alcotest.(check (list int))
-    "no line ledgered as EXCLUDED (E1 :522 / E2 :528 / E3 :606) is shipped by \
-     any suite - a hit RE-OPENS the exclusion (and for :528 would also collide \
-     with P19's M1, its semantic twin; E3 :606 is the LIFT of E5, which \
-     collapses to 'L2 wearing a hat' on a single-CR scenario)"
+    "no line ledgered as EXCLUDED (E1 :522 / E2 :528) is shipped by any \
+     suite - a hit RE-OPENS the exclusion (and for :528 would also collide \
+     with P19's M1, its semantic twin)"
     []
     (List.filter
        (fun (n : int) -> List.mem n roster_guarantee_lines)
        ledgered_excluded_lines);
   (* The ledger is still TOTAL and DISJOINT at the file's measured cardinal
-     (NINE pub open spec fn, counted at build time; 6 shipped + 3 excluded
-     after the P23 re-partition). *)
+     (NINE pub open spec fn, counted at build time; 7 shipped + 2 excluded
+     after the P25 re-partition). *)
   Alcotest.(check int)
     "shipped + ledgered = the file's 9 pub open spec fn, no orphan and no \
-     double-ledgering (6 + 1 + 1 + 1)"
+     double-ledgering (7 + 1 + 1)"
     P21_witness.ledger_spec_fn_count
     (List.length
        (List.sort_uniq Int.compare
@@ -600,7 +631,7 @@ let () =
              source) pairs"
             `Quick test_family_names_and_pairs;
           Alcotest.test_case
-            "the roster is FIFTEEN suites and really covers P19, P20, P21, \
+            "the roster is SIXTEEN suites and really covers P19, P20, P21, \
              P23 and P24 (the entry the ledger clause sweeps)"
             `Quick test_roster_covers_p19_p20_and_p21;
           Alcotest.test_case
@@ -611,9 +642,10 @@ let () =
       ( "exclusion_pins",
         [
           Alcotest.test_case
-            "E-ledger reversal clause (re-partitioned 4+5 -> 6+3): the roster \
-             ships exactly G1-G4 + L1 :613 + L2 :640, every prefixed source \
-             PARSES (the bare-source firewall), and no excluded line appears"
+            "E-ledger reversal clause (re-partitioned 4+5 -> 6+3 -> 7+2): the \
+             roster ships exactly G1-G4 + E3 :606 + L1 :613 + L2 :640, every \
+             prefixed source PARSES (the bare-source firewall), and no \
+             excluded line appears"
             `Quick test_e_ledger_reversal_clause;
         ] );
     ]

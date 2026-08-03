@@ -158,17 +158,50 @@
     FALSE on purpose; nothing in this family or its tests asserts one.
 
     {b E-ledger} (BUILD-SPEC-P21 §2.2; the file has exactly NINE
-    [pub open spec fn], 4 shipped + 5 excluded, total and disjoint): E1 :522
-    (the quantified closure - collapses to G4 on a single-CR scenario, above);
-    E2 :528 ([every_msg_from_vsts_controller_carries_vsts_key] - ALREADY
-    SHIPPED as P19's M1 under its [helper_invariants.rs:1213] citation; P19's
-    "semantic duplicate" call RE-MEASURED this phase: SEMANTICALLY IDENTICAL,
-    one [is_controller_id] unfolding apart, bridged by upstream itself at
-    [liveness/proof.rs:903-927]; spec §2.2); E3 :606 /
-    E4 :613 / E5 :640 (the controller-LOCAL register - needs the typed VSTS
-    reconcile state, and the port's [Controller.ongoing_reconcile.local_state]
-    is an untyped [Value.t], controller.mli:60; deferred as real plumbing, the
-    strongest remaining unoccupied register in the file).
+    [pub open spec fn], total and disjoint - ground truth throughout is
+    [P21_witness.ledger_spec_fn_count] / [ledger_shipped_lines]).
+
+    {b RE-PARTITIONED BY P23} (BUILD-SPEC-P23 §2.2), and this is a
+    RE-PARTITION, NOT A RED: P21 wrote 4 shipped + 5 excluded and ledgered
+    E3/E4/E5 (:606 / :613 / :640) jointly as the controller-LOCAL register,
+    excluded on the ground that [Controller.ongoing_reconcile.local_state] is
+    an untyped [Value.t] and the VSTS reconcile step was not exposed. Both
+    halves went false in P23 ([pending_req_msg] is exposed at
+    controller.mli:57; the typed state is reachable through
+    [V_stateful_set_pack.unmarshal_state]), so P23 SHIPPED E4 :613 as L1 and
+    E5 :640 as L2 - a SEPARATE exported family,
+    {!Local_binding.binding_family} (local_binding.mli:47-78), never folded
+    into {!guarantee_family} below. E3 :606 STAYED EXCLUDED through P23 (the
+    LIFT of E5 over every VSTS-kind key in [ongoing_reconciles], :608-609 -
+    "L2 wearing a hat" on every single-CR committed scenario;
+    local_binding.mli:39-45). This annotation itself records a re-partition
+    this file's prose never carried at the time (BUILD-SPEC-P24.md §5.3
+    doc-debt item 1).
+
+    {b RE-PARTITIONED BY P25} (BUILD-SPEC-P25 §1.1, §2), and this SUPERSEDES
+    the P23 paragraph's "E3 STAYED EXCLUDED": E3 :606 now SHIPS, evaluated
+    over the UNCHANGED committed MULTI-CR graphs (P12 fair [desireds=[1;1]]
+    rc=3, P13 G2 crash rc=2) rather than the single-CR scenarios that
+    vacuized it through P23. Both ship gates passed: unmutated violating 0/0;
+    pins reproduced exactly (fair states=8580 / inv6_gate=6952 /
+    premise-firing 8536; crash states=10552 / gate=2784 / premise 9200); the
+    named mutant [api_server.ml:287] (namespace corruption in the etcd
+    storage key) reddens 3440/7596 states (fair) and 3008/9464 (crash),
+    restored byte-identical and re-verified 0/0 (RULING-P25-SELECTION.md
+    item 1). E3's shipped body and export live in THIS module, beside
+    {!guarantee_family}: the standalone value
+    {!local_pods_and_pvcs_are_bound_to_vsts} below, calling out to
+    {!Local_binding.holds_at_key}; this ledger entry records the ACCOUNTING
+    move only. E1 :522 still collapses to G4 on a single-CR scenario (above);
+    E2 :528 stays ALREADY SHIPPED semantically as P19's M1 under its
+    [helper_invariants.rs:1213] citation (SEMANTICALLY IDENTICAL, one
+    [is_controller_id] unfolding apart, bridged by upstream itself at
+    [liveness/proof.rs:903-927]) yet remains its own excluded
+    [pub open spec fn] in this ledger's accounting. {b The partition is now
+    7 shipped + 2 excluded}, still nine total and disjoint: shipped G4 :544 /
+    G1 :562 / G2 :581 / G3 :589 (P21, here) + L1 :613 / L2 :640 (P23,
+    Local_binding) + E3 :606 (P25, here); excluded E1 :522 / E2 :528 (here)
+    only.
 
     Every [holds]/[interesting] is total, pure and exception-free; every match
     on a finite sum is exhaustive - the nine [Api_method.api_request]
@@ -215,3 +248,11 @@ val guarantee_family :
     [desired = 1], reported as an honest N5-style vacuity row family-wide,
     never as a pass - while G3 fires even on the fault-free zero-budget graph
     (the rolling-update path emits [Get_then_update_request] unprovoked). *)
+
+val local_pods_and_pvcs_are_bound_to_vsts : controller_id:int -> Invariants.invariant
+(** E3 (:606-611), the LIFT of L2/E5 over every VSTS-kind key of
+    [Cluster.ongoing_reconciles]. Un-excluded this phase (P25) on the ground that
+    the committed multi-CR graphs (P12 fair [1;1], P13 G2 crash [1;1]) now give it
+    a genuine >1-key premise - de-vacuizing the "L2 wearing a hat" collapse P21/P23
+    measured on every single-CR scenario. Calls OUT to {!Local_binding.holds_at_key}
+    rather than re-deriving L1/L2's body a third time. *)

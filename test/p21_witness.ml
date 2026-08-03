@@ -216,27 +216,30 @@ let guarantee_cardinal : int = 4
    PRE-AUTHORIZED in those words: BUILD-SPEC-P22.md:279-281 records that
    t_p21_regression's clause "reds only if P23 ships E3-E5, deliberately".
 
-   The partition after P23 is 6 shipped + 3 excluded, still total and disjoint
+   RE-PARTITIONED AGAIN BY P25 (BUILD-SPEC-P25 §1.1, §2), superseding the P23
+   paragraph's E3 bullet: E3 :606 - the LIFT of E5 over every VSTS-kind key in
+   [ongoing_reconciles], "L2 wearing a hat" on every single-CR scenario, the
+   exact ground P21 used for its own E1 - now SHIPS as the standalone
+   {!Anvil_assurance.Internal_guarantee.local_pods_and_pvcs_are_bound_to_vsts},
+   evaluated over the UNCHANGED committed multi-CR graphs (P12 fair
+   [desireds=[1;1]] rc=3, P13 G2 crash rc=2) that de-vacuize the lift.
+
+   The partition after P25 is 7 shipped + 2 excluded, still total and disjoint
    at nine:
-     shipped 6 - G4 :544, G1 :562, G2 :581, G3 :589 (P21);
-                 L1 :613, L2 :640 (P23)
+     shipped 7 - G4 :544, G1 :562, G2 :581, G3 :589 (P21);
+                 E3 :606 (P25); L1 :613, L2 :640 (P23)
      E1      1 - :522, the quantified closure; collapses to G4 on a single-CR
                  scenario, so shipping it would be "G4 wearing a hat"
      E2      1 - :528; ALREADY SHIPPED semantically as P19's M1 under its
                  [helper_invariants.rs:1213] citation (re-measured at P21:
                  SEMANTICALLY IDENTICAL, one [is_controller_id] unfolding
                  apart)
-     E3      1 - :606, the LIFT of E5 over every VSTS-kind key in
-                 [ongoing_reconciles]; every shipped scenario is single-CR, so
-                 it collapses to L2-at-the-scenario-key - "L2 wearing a hat",
-                 the exact ground P21 used for its own E1. A two-CR spine
-                 de-vacuizes it; that is a later phase.
    Shipped lines ASCENDING (G4's :544 is lowest; upstream defines the StatePred
-   before its helpers). [ledger_e3_e5_lines] was RENAMED to [ledger_e3_lines]
-   rather than shrunk in place, so a stale reader of the old name fails to
-   compile instead of silently reading a narrower bucket. *)
+   before its helpers). P23 RENAMED the joint E3/E4/E5 bucket down to an
+   E3-only bucket rather than shrinking it in place, and P25 RENAMED THAT
+   BUCKET AWAY entirely when E3 shipped, so a stale reader of either retired
+   name fails to compile instead of silently reading a narrower bucket. *)
 let ledger_spec_fn_count : int = 9
-let ledger_shipped_lines : int list = [ 544; 562; 581; 589; 613; 640 ]
+let ledger_shipped_lines : int list = [ 544; 562; 581; 589; 606; 613; 640 ]
 let ledger_e1_lines : int list = [ 522 ]
 let ledger_e2_lines : int list = [ 528 ]
-let ledger_e3_lines : int list = [ 606 ]

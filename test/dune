@@ -19,7 +19,18 @@
    t_p20_mutation t_p20_regression t_p21_guarantee t_p21_mutation
    t_p21_regression t_p22_scaledown t_p22_mutation t_p22_regression
    t_p23_local_binding t_p23_mutation t_p23_regression
-   t_p24_state_predicates t_p24_mutation t_p24_regression)
+   t_p24_state_predicates t_p24_mutation t_p24_regression t_p25_e3_multi_cr
+   t_p25_reconcile t_p25_state_predicates)
+ ; t_p25_reconcile's prose-reading legs (BUILD-SPEC-P25 section 1.4 open
+ ; flag, resolved by a REAL @runtest 2026-08-03): the _build/default mirror
+ ; materializes every COMPILED source (.ml/.mli), but NOT the two BUILD-SPEC
+ ; markdown files nor this dune file - exactly the three files below were
+ ; measured ABSENT, so they are declared; everything else the battery reads
+ ; is already forced into _build by the exes' own compilation deps.
+ (deps
+  (file dune)
+  (file ../lib/checker/BUILD-SPEC-P22.md)
+  (file ../lib/checker/BUILD-SPEC-P23.md))
  (libraries anvil_support anvil_k8s_objects anvil_state_machine anvil_reconciler
    anvil_cluster anvil_controllers anvil_assurance anvil_checker anvil_proof
    anvil_exec comp_cat alcotest qcheck-core qcheck-alcotest)

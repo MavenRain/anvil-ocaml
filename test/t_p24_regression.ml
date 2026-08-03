@@ -62,14 +62,14 @@
      ABSENT from the committed pairs rather than parked there as a qualified
      string: a cut member must not be reachable through the roster's input.
 
-   - THE ROSTER, EXTENDED TO SIXTEEN AND THE SELF-EXCLUSION MOVED (the
+   - THE ROSTER, EXTENDED TO SEVENTEEN AND THE SELF-EXCLUSION MOVED (the
      P20->P21->P22->P23 mechanism, re-run): t_p23_regression's roster was
      FIFTEEN with its own P23 entry excluded by label. HERE the P23 label loses
      its "THIS phase" marker and moves INTO the swept set, and the
      self-exclusion keys on [p24_label]. A VERBATIM COPY-FORWARD OF THE P23
      ROSTER REDS: that file's assertions name FIFTEEN explicitly.
 
-   - THE SWEEP: the predicate family against the other FIFTEEN roster suites
+   - THE SWEEP: the predicate family against the other SIXTEEN roster suites
      via {!Pair_guard.pair_leaks}, BOTH argument orders, expecting [[]]
      everywhere. RULING section 5 makes this an explicit obligation of the
      phase ("[pair_leaks] must be run in BOTH argument orders against the full
@@ -82,10 +82,14 @@
      (:405-406) and every P24 source is [.../liveness/state_predicates.rs:NNN],
      so the P24 roster addition cannot reach that filter. This file MEASURES
      that rather than asserting it as a plan: it checks that no P24 source
-     bears the guarantee prefix, and that the SIXTEEN-suite roster's
-     guarantee-line inventory is still exactly {!P21_witness.ledger_shipped_lines}.
-     A P24 member that acquired an internal_rely_guarantee.rs citation would
-     redden here AND silently re-partition a ledger this phase does not own.
+     bears the guarantee prefix, and that the SEVENTEEN-suite roster's
+     guarantee-line inventory is still exactly
+     {!P21_witness.ledger_shipped_lines} - since P25 the RE-PARTITIONED
+     7-item shipped bucket (G4 :544 / G1 :562 / G2 :581 / G3 :589 / E3 :606 /
+     L1 :613 / L2 :640); adding P24 moved nothing, and P25's E3 roster row is
+     the sanctioned move (BUILD-SPEC-P25 §2). A P24 member that acquired an
+     internal_rely_guarantee.rs citation would redden here AND silently
+     re-partition a ledger this phase does not own.
 
    ---- what it does NOT do (anti-duplication, the P15-P23 rationale) --------
 
@@ -530,7 +534,7 @@ let test_family_names_and_pairs () =
     "the witness's member names = the committed two"
     [ m1_name; m3_name ] W.member_names
 
-(* ==== 3. THE ROSTER - sixteen suites, and the self-exclusion MOVED ======== *)
+(* ==== 3. THE ROSTER - seventeen suites, and the self-exclusion MOVED ====== *)
 
 let p19_label : string = "Msg_provenance.provenance_family (P19)"
 let p20_label : string = "Rely_conditions.rely_family (P20)"
@@ -543,6 +547,14 @@ let p22_label : string =
    t_p23_regression keeps its own marker and its own self-exclusion. *)
 let p23_label : string = "Local_binding.binding_family (P23)"
 let p24_label : string = "State_predicates.predicate_family (P24, THIS phase)"
+
+(* P25's standalone E3 value - the SAME label literal as t_p21_regression's
+   sixteenth-row label, so the two rosters name the suite identically. Without
+   this SEVENTEENTH entry the p21_witness shipped-bucket edit reddens the
+   source-file partition case below: the expected side gains :606 while the
+   roster-derived inventory does not (BUILD-SPEC-P25 §2.1-ADDENDUM). *)
+let p25_e3_label : string =
+  "Internal_guarantee.local_pods_and_pvcs_are_bound_to_vsts (P25, E3)"
 
 (* The P21 and P22 roster entries are the SAME expression (P22 shipped no new
    family), bound separately so the roster has two entries. *)
@@ -578,6 +590,7 @@ let shipped_suites : (string * Invariants.invariant list) list =
     (p22_label, p22_family);
     (p23_label, p23_family);
     (p24_label, family);
+    (p25_e3_label, [ Ig.local_pods_and_pvcs_are_bound_to_vsts ~controller_id ]);
   ]
 
 (* The roster's LABELS, committed as a literal list: a verbatim copy of the P23
@@ -601,6 +614,7 @@ let committed_roster : string list =
     p22_label;
     p23_label;
     p24_label;
+    p25_e3_label;
   ]
 
 let others : (string * Invariants.invariant list) list =
@@ -623,18 +637,18 @@ let missing_from_roster (pairs : (string * string) list) :
     (string * string) list =
   List.filter (fun (p : string * string) -> not (List.mem p roster_pairs)) pairs
 
-let test_roster_is_sixteen_and_covers_the_newest_phases () =
+let test_roster_is_seventeen_and_covers_the_newest_phases () =
   Alcotest.(check (list string))
-    "the roster is SIXTEEN suites - t_p23_regression's fifteen with the P23 \
-     marker demoted, PLUS the P24 entry (a verbatim copy-forward REDS: that \
-     file names FIFTEEN explicitly)"
+    "the roster is SEVENTEEN suites - t_p23_regression's fifteen with the P23 \
+     marker demoted, PLUS the P24 entry and P25's standalone E3 entry (a \
+     verbatim copy-forward REDS: that file names FIFTEEN explicitly)"
     committed_roster
     (List.map
        (fun ((label, _) : string * Invariants.invariant list) -> label)
        shipped_suites);
   Alcotest.(check int)
-    "fifteen suites are swept (the P24 self-entry is excluded; the P23 entry \
-     is IN the swept set now)"
+    "sixteen suites are swept (the P24 self-entry is excluded; the P23 and \
+     P25 entries are IN the swept set)"
     (List.length committed_roster - 1)
     (List.length others);
   Alcotest.(check bool)
@@ -653,7 +667,7 @@ let test_roster_is_sixteen_and_covers_the_newest_phases () =
     []
     (missing_from_roster committed_predicate_pairs)
 
-(* ==== 4. the sweep: DISJOINT from all fifteen ==============================
+(* ==== 4. the sweep: DISJOINT from all sixteen ==============================
    RULING section 5 makes this an explicit obligation and notes it is NOT
    automatic. P24 ships two genuinely new members, so every row expects [[]].
    {!Pair_guard.pair_leaks} detects a shared NAME or a shared SOURCE in either
@@ -676,9 +690,10 @@ let leaks_against (suites : (string * Invariants.invariant list) list) :
 
 let test_family_is_disjoint_from_shipped_suites () =
   Alcotest.(check (list string))
-    "no P24 predicate member shares a name or source with any of the FIFTEEN \
-     other shipped suites (both argument orders, incl. P21's, P22's and \
-     P23's) - RULING section 5's explicit obligation, which is not automatic"
+    "no P24 predicate member shares a name or source with any of the SIXTEEN \
+     other shipped suites (both argument orders, incl. P21's, P22's, P23's \
+     and P25's) - RULING section 5's explicit obligation, which is not \
+     automatic"
     []
     (leaks_against others);
   (* The sweep is SEEN red-capable: the same detector, run against the roster's
@@ -701,10 +716,13 @@ let test_family_is_disjoint_from_shipped_suites () =
    t_p21_regression (header), a file this phase EDITS to add the roster entry.
    What is measured HERE is the thing that makes editing that file safe: every
    P24 source names [liveness/state_predicates.rs] and NONE bears the
-   [internal_rely_guarantee.rs:] prefix the clause filters on, so the SIXTEEN-
-   suite roster's guarantee-line inventory is byte-identical to the FIFTEEN-
-   suite one. A P24 member that acquired a guarantee citation would silently
-   re-partition a ledger this phase does not own. *)
+   [internal_rely_guarantee.rs:] prefix the clause filters on, so P24's own
+   roster addition moved the guarantee-line inventory not at all. The
+   SEVENTEEN-suite roster's inventory equals the RE-PARTITIONED 7-item
+   shipped bucket - the one line P25's E3 entry adds (:606) is the sanctioned
+   move (BUILD-SPEC-P25 §2), asserted against the live ledger below. A P24
+   member that acquired a guarantee citation would silently re-partition a
+   ledger this phase does not own. *)
 
 let guarantee_prefix : string =
   "vstatefulset_controller/proof/internal_rely_guarantee.rs:"
@@ -763,11 +781,12 @@ let test_source_file_partition () =
     (List.filter
        (String.starts_with ~prefix:guarantee_prefix)
        Sp.predicate_sources);
-  (* the inventory itself, measured over the SIXTEEN-suite roster *)
+  (* the inventory itself, measured over the SEVENTEEN-suite roster *)
   Alcotest.(check (list int))
-    "the SIXTEEN-suite roster's internal_rely_guarantee.rs inventory is still \
-     exactly the ledger's shipped bucket (G4 :544, G1 :562, G2 :581, G3 :589, \
-     L1 :613, L2 :640) - adding P24 moved nothing"
+    "the SEVENTEEN-suite roster's internal_rely_guarantee.rs inventory is \
+     still exactly the ledger's RE-PARTITIONED 7-item shipped bucket \
+     (G4 :544, G1 :562, G2 :581, G3 :589, E3 :606, L1 :613, L2 :640) - \
+     adding P24 moved nothing; P25's E3 row is the sanctioned move"
     P21_witness.ledger_shipped_lines roster_guarantee_lines;
   Alcotest.(check (list int))
     "and no P24 line collides with a ledgered guarantee line, in either \
@@ -807,9 +826,9 @@ let () =
       ( "roster",
         [
           Alcotest.test_case
-            "the roster is SIXTEEN suites; P23 demoted into the swept set; \
+            "the roster is SEVENTEEN suites; P23 demoted into the swept set; \
              coverage of the COMMITTED literals"
-            `Quick test_roster_is_sixteen_and_covers_the_newest_phases;
+            `Quick test_roster_is_seventeen_and_covers_the_newest_phases;
         ] );
       ( "disjointness",
         [
@@ -822,7 +841,9 @@ let () =
         [
           Alcotest.test_case
             "both P24 sources are BARE liveness/state_predicates.rs citations, \
-             and the roster's internal_rely_guarantee.rs inventory is unmoved"
+             and the roster's internal_rely_guarantee.rs inventory is the \
+             re-partitioned 7-item shipped bucket (P24 moved nothing; P25's \
+             E3 row is the sanctioned move)"
             `Quick test_source_file_partition;
         ] );
     ]

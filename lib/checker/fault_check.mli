@@ -2034,11 +2034,16 @@ val check_local_binding_under_faults :
     round parked at [AfterListPod] really is parked on a pod-[ListRequest] in
     the CR's namespace with every matching ok response carrying only objects of
     that namespace. It retires P21's E4/E5 deferral
-    (internal_guarantee.mli:167-171) - {b E3 :606 STAYS EXCLUDED}, per
-    local_binding.mli:39-45 and the committed [P21_witness.ledger_e3_lines] =
-    [[606]] pin (t_p21_regression.ml:72, :501-503) - and re-partitions the file's
-    nine [pub open spec fn] from 4 shipped + 5 excluded to 6 shipped + 3
-    excluded.
+    (internal_guarantee.mli:160-204) and re-partitions the file's nine
+    [pub open spec fn] from 4 shipped + 5 excluded to 6 shipped + 3 excluded.
+    E3 :606 stayed excluded at this leg's landing; BUILD-SPEC-P25 §2 then
+    re-partitioned again to {b 7 shipped + 2 excluded}, shipping E3 as
+    {!Internal_guarantee}'s standalone
+    [local_pods_and_pvcs_are_bound_to_vsts] value per local_binding.mli:41-51
+    and RENAMING AWAY the witness bucket that had pinned the exclusion as
+    [[606]] (t_p21_regression.ml:66-76, :518-519), so a stale reader of the
+    retired bucket fails to compile instead of silently reading a narrower
+    one.
 
     {b WHAT A RED MEANS HERE.} The {!check_internal_guarantee_under_faults}
     reading, carried over: upstream DISCHARGES both members
@@ -2396,7 +2401,7 @@ val check_state_predicates_under_faults :
     writers the assumption excludes. Asserting those conjuncts on those graphs
     asserts upstream's predicate outside its stated scope, so they are
     {b EXCLUDED-WITH-A-PIN} - the phase's THIRD exclusion ground, distinct from
-    the PVC pin's SHAPE ground (seven M1 conjuncts) and from :241 / :246's
+    the PVC pin's SHAPE ground (seven M1 conjuncts; P25: EIGHT) and :241 / :246's
     REACHABILITY ground (two). {b Neither the leg assertion nor M3's premise was
     touched}: relaxing either would have been the retune this project forbids.
     M3 now ships its SEVEN pure-shape conjuncts (:115, :126, :127, :128, :129,
@@ -2452,9 +2457,11 @@ val check_state_predicates_under_faults :
     re-measure 88 / 808 / 1144 / 10216 states and 76 / 680 / 1056 / 8872 decoded
     unchanged, both while the leg was refuted on two graphs and after the
     exclusion made it clean on four. The per-conjunct partition this leg
-    inherits - {b eleven exclusions on THREE grounds}: M1's fourteen PORT with
-    seven dying on the SHAPE ground's [pvcs_non_empty_everywhere] pin and :241
-    with :246 on a REACHABILITY ground, and M3's seven pure-shape conjuncts PORT
+    inherits - {b eleven exclusions on THREE grounds} (P25 added a FOURTH name,
+    RED-CAPABILITY-PENDING, for eight of them at [vct:true], :246 included):
+    M1's fourteen PORT with seven dying on the SHAPE ground's
+    [pvcs_non_empty_everywhere] pin and :241 with :246 on a REACHABILITY
+    ground, and M3's seven pure-shape conjuncts PORT
     with :116-118 and :119-124 on the SCOPE ground - lives in
     {!State_predicates}'s interface and is deliberately not restated here. The
     CUT candidate's own partition (five conjuncts in L2, :65 entailed, :49

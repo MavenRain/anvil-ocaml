@@ -460,7 +460,7 @@ calls `Model_check.explore` with only `~depth ~successors ~equal ~hash ~init`
 `~bound ~budget ~cluster ~controller_id`. **Graphs are family-blind.** So a
 new leg that reuses `(seed, bound, budget, depth)` cannot move any committed
 graph. The committed pins that must come back BYTE-IDENTICAL:
-**76 / 464 / 744 / 1976 / 116** (P13-P21, `p21_witness.ml:148-152` re-exported
+**76 / 464 / 744 / 1976 / 116** (P13-P21, `p21_witness.ml:140-144` re-exported
 into `p22_witness.ml:148-152`) and **88 / 808 / 1144 / 10216** (P22,
 `p22_witness.ml:159-162`), with P22's four gates **20 / 276 / 96 / 2080**
 (`p22_witness.ml:163-166`). **A moved pin is a phase-STOP, never a retune.**
@@ -737,7 +737,7 @@ red an assertion, and a mutant predicted green must be SEEN green.
   **NAMED PRECONDITION MC2, which a later phase must EXHIBIT before the field
   ships:** swap the leg's family to a DIFFERENT shipped family whose
   interesting-union count coincides on all four graphs (candidate:
-  `Helper_invariants.helper_family ~cr ~controller_id` at
+  `Internal_guarantee.guarantee_family ~cr ~controller_id` at
   `fault_check.ml:1134`) and SEE the gate pins 20/276/96/2080 come back
   UNMOVED with every other pinned number byte-identical. Until MC2 is
   exhibited and seen to SURVIVE today's pins, the field's value is

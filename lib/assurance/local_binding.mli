@@ -28,21 +28,27 @@
     DIVERGENCE in the port} - the port's own reconciler decoded, or parked on, a
     local state upstream proves it never holds - and it is a real finding.
 
-    {b E-LEDGER RE-PARTITION} (BUILD-SPEC-P23 §2.2). The file has exactly NINE
-    [pub open spec fn]. P21's partition was 4 shipped + 5 excluded; after this
-    phase it is 6 shipped + 3 excluded, still total and disjoint:
-    G4 :544, G1 :562, G2 :581, G3 :589 (P21), L1 :613 and L2 :640 (here), with
-    E1 :522, E2 :528 and E3 :606 excluded. This re-partition is PRE-AUTHORIZED -
-    BUILD-SPEC-P22.md:279-281 records that [t_p21_regression]'s ledger clause
-    "reds only if P23 ships E3-E5, deliberately".
+    {b E-LEDGER RE-PARTITION} (BUILD-SPEC-P23 §2.2; re-partitioned again by
+    BUILD-SPEC-P25 §1.1, §2). The file has exactly NINE [pub open spec fn].
+    P21's partition was 4 shipped + 5 excluded -> 6 shipped + 3 excluded
+    after P23: G4 :544, G1 :562, G2 :581, G3 :589 (P21), L1 :613
+    and L2 :640 (here), with E1 :522, E2 :528 and E3 :606 then excluded. That
+    re-partition was PRE-AUTHORIZED - BUILD-SPEC-P22.md:279-281 records that
+    [t_p21_regression]'s ledger clause "reds only if P23 ships E3-E5,
+    deliberately". P25 SHIPS E3 :606 through {!holds_at_key} (below), and the
+    partition is now 7 shipped + 2 excluded (E1 :522 and E2 :528 only).
 
-    {b Why E3 :606 stays excluded.} E3 is the LIFT of E5 over every VSTS-kind key
-    in [ongoing_reconciles] (:608-609, one conjunct, six-line body). Every
-    shipped scenario is single-CR (scenario.ml:249-253), so the map holds at most
-    the one VSTS key and E3 collapses to L2-at-the-scenario-key, or is vacuously
-    true. That is "L2 wearing a hat" - the exact ground P21 used for its own E1
-    (BUILD-SPEC-P21.md:132). A two-CR spine de-vacuizes it; that is a later
-    phase.
+    {b Why E3 :606 stayed excluded through P24, and what shipped it.} E3 is the
+    LIFT of E5 over every VSTS-kind key in [ongoing_reconciles] (:608-609, one
+    conjunct, six-line body). Every P23-shipped scenario was single-CR
+    (scenario.ml:249-253), so the map held at most the one VSTS key and E3
+    collapsed to L2-at-the-scenario-key, or was vacuously true - "L2 wearing a
+    hat", the exact ground P21 used for its own E1 (BUILD-SPEC-P21.md:132). A
+    multi-CR spine de-vacuizes it, and P25 is that phase: the lift SHIPS as
+    the standalone
+    {!Internal_guarantee.local_pods_and_pvcs_are_bound_to_vsts}, evaluated
+    over the committed multi-CR graphs, calling OUT to {!holds_at_key} rather
+    than duplicating L2's body.
 
     {b L1} [local_pods_and_pvcs_are_bound_to_vsts_with_key_in_local_state]
     (:613-638), a pure [(cr_key, local_state) -> bool] upstream. Ported at the
@@ -88,8 +94,10 @@
       [s.ongoing_reconciles(controller_id)[cr_key].local_state]). The port has no
       total map, so BOTH members fold the absent-key case to [true] - which is
       E3's :608 premise [contains_key(k) && k.kind == VStatefulSetView::kind()],
-      restricted to the ONE scenario key. The source strings stay bare :613 and
-      :640; this sentence is where the borrowing is recorded.
+      restricted to the ONE scenario key. E3 itself SHIPPED in P25 via
+      {!holds_at_key}, folding this same guard over every VSTS-kind key. The
+      source strings stay bare :613 and :640; this sentence is where the
+      borrowing is recorded.
     - {b THE DECODE-FAILURE ARM.} Verus reads [unmarshal(...)->Ok_0], which on a
       non-[Ok] is an UNCONSTRAINED total-map value. The port folds a decode error
       to [true] in [holds] and [false] in [interesting] - the house
@@ -283,9 +291,10 @@
     {b STILL NOT CLAIMED.} No member has been seen red on a SHIPPED graph, and
     none should be: every red above is a deliberate mutant. In particular L2's
     inner-forall CONSEQUENT (:659-661) carries a measured PREMISE and a dedicated
-    [t_p23_mutation] row for its red capability, but no red COUNT; E3 :606 stays
-    excluded and un-de-vacuized until a two-CR spine lands; and no [~vct:true]
-    LEG is shipped, only the [~vct:true] mutation row.
+    [t_p23_mutation] row for its red capability, but no red COUNT; E3 :606
+    stayed excluded and un-de-vacuized until P25's multi-CR graphs shipped it
+    (BUILD-SPEC-P25 §1.1); and no [~vct:true] LEG is shipped, only the
+    [~vct:true] mutation row.
 
     {b House rules.} Every [holds]/[interesting] is total, pure and
     exception-free: no [raise], no [failwith], no partial accessor, no two-arm
@@ -348,3 +357,15 @@ val binding_family :
     of the standard premise-wiring mutant, and it is why a non-zero per-member
     [interesting] is the only evidence that the family was wired to the leg's
     controller at all. *)
+
+val holds_at_key :
+  controller_id:int -> cr_key:Common.object_ref -> Cluster.cluster_state -> bool
+(** L2's decoded predicate (:640-664, [~absent:true ~undecodable:true] - the same
+    borrowed-from-E3 fold local_binding.ml:252-259 already discloses) evaluated at
+    an ARBITRARY key, not only the scenario CR's. Exposed so
+    {!Internal_guarantee}'s E3 lift can fold it over every VSTS-kind key of
+    [Cluster.ongoing_reconciles] without a third copy of L1/L2's body. This is
+    the export local_binding.ml:259-263 named in advance: "[Object_ref_map.for_all]
+    is deliberately NOT used here: that is E3's lift, which this phase EXCLUDES" -
+    P25 is the phase that un-excludes it, and it does so by calling OUT to this
+    module, not by duplicating into it. *)
