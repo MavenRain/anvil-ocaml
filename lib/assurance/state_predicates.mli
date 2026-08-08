@@ -958,3 +958,35 @@ val predicate_family :
    the fourteen previously unexercised M1 sites and for the M3 name
    conjunct, exactly the FORGED-STATE route the WHAT-WOULD-EXERCISE-THE-REST
    bullet above records - seed-free, bound-free, pin-free. *)
+
+(* ==== P27 split promotion note (append-only; BUILD-SPEC-P27 section 2) ====
+
+   This block reclassifies exactly two of the eight vct:true conjuncts that
+   the EXCLUDED-WITH-A-PIN block at :97-115 above holds out as
+   RED-CAPABILITY-PENDING. Two conjuncts are now PROBE-CONFIRMED red-capable
+   on the committed L0v graph (116 states, [test/t_p26_pins.ml]:60-73):
+
+   - :197 (pvc_index <= pvc_cnt): the ml:623 Create_pvc-arm mutant measured
+     violating=28 and the ml:639 Skip_pvc-arm mutant measured violating=20
+     (stageC-probe-623-mutant.log:11; stageC-probe-639-mutant.log:11).
+   - :246 (the P25 premise form, idx>0): both mutants measured violating=4
+     (stageC-probe-623-mutant.log:18; stageC-probe-639-mutant.log:18).
+
+   Mutant sites: [lib/controllers/v_stateful_set_reconciler.ml]:623 and
+   :639, one mutant per trial. Both trials were restored byte-identical
+   (cp + cmp) and the post-restore suite ran green, 27 tests, RC=0
+   (stageC-probe-623-restored.log:100-101,
+   stageC-probe-639-restored.log:100-101).
+
+   The other six conjuncts (:198, :199, :215-221, :223-228, :233, :244)
+   STAY at RED-CAPABILITY-PENDING: both trials measured violating=0 for
+   all six (stageC-probe-623-mutant.log:12-17,
+   stageC-probe-639-mutant.log:12-17). No named mutant has reddened them.
+
+   Standing caveat: two confirmed conjuncts do NOT close the octet. The
+   probes ran on L0v only, never on the FAIR (8580-state) or CRASH
+   (10552-state) batteries. The eight conjuncts stay EXCLUDED from
+   committed green. The :97-115 block, the frozen battery coordinate at
+   :861, and the P26 block above are NOT edited; this note is the
+   append-only correction (the P22/P24 precedent). Grounds, stage gates,
+   and the pending-mutant ledger: [lib/checker/BUILD-SPEC-P27.md]. *)
