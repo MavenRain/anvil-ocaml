@@ -515,6 +515,40 @@ let forge ~(step : Vsr.step) ~(needed : Pod.t option list)
       reconcile_id = 0;
     }
 
+(* ---- P26 FORGED-STATE builders (BUILD-SPEC-P26 section 2) -----------------
+   [reconcile_state] above hard-codes both cursors to 0; the FS rows violate
+   exactly one cursor implication each, so the two index cursors are
+   parameterized here. [pvcs] stays [[]] and [pvc_index] stays 0 - the rows
+   are seed-free and touch nothing PVC-shaped. Fresh names throughout: a
+   reused binding name would shadow silently (section 1.6). *)
+
+let reconcile_state_at ~(step : Vsr.step) ~(needed : Pod.t option list)
+    ~(needed_index : int) ~(condemned : Pod.t list) ~(condemned_index : int) :
+    Vsr.s =
+  {
+    Vsr.reconcile_step = step;
+    needed;
+    needed_index;
+    condemned;
+    condemned_index;
+    pvcs = [];
+    pvc_index = 0;
+  }
+
+let forge_at ~(step : Vsr.step) ~(needed : Pod.t option list)
+    ~(needed_index : int) ~(condemned : Pod.t list) ~(condemned_index : int)
+    ~(pending : Message.t option) : Cluster.cluster_state =
+  install
+    {
+      Controller.triggering_cr = V_stateful_set.marshal cr;
+      pending_req_msg = pending;
+      local_state =
+        Pack.marshal_state
+          (reconcile_state_at ~step ~needed ~needed_index ~condemned
+             ~condemned_index);
+      reconcile_id = 0;
+    }
+
 let injection_landed (s : Cluster.cluster_state) : bool =
   Option.fold
     (Object_ref_map.find_opt cr_key (Cluster.ongoing_reconciles s controller_id))
@@ -620,6 +654,16 @@ let foreign_ns_obj : Dynamic_object.t =
    (which reads only the namespace, local_binding.ml:206-212) stays GREEN. *)
 let non_pod_obj : Dynamic_object.t =
   Dynamic_object.with_namespace ns (V_stateful_set.marshal cr)
+
+(* The FS15 payload (BUILD-SPEC-P26 section 2): a marshalled [listed_pod]
+   whose [metadata.name] is [None] - the repod discipline above, with the
+   namespace kept as the CR's own so upstream :129-130 (and P23's L2) stay
+   GREEN and only :128 can fire. A nameless ref renders name "" in
+   [dyn_object_ref] (state_predicates.ml:445-452) while every seed-read
+   object is named, so :115 sees no duplicate. *)
+let nameless_pod_obj : Dynamic_object.t =
+  Pod.marshal
+    (repod { (Pod.metadata good_pod0) with Object_meta.name = None } good_pod0)
 
 let parked_with (objs : Dynamic_object.t list) : Cluster.cluster_state =
   with_in_flight
@@ -765,6 +809,145 @@ let test_m1_novel_conjuncts () =
     false
     (holds p23_family l1_name shared)
 
+(* ==== the P26 FORGED-STATE rows FS1-FS14 (BUILD-SPEC-P26 section 2) ========
+   One row per unexercised M1 conjunct site - the route
+   state_predicates.mli:364-374 records: forge a decoded state at a step
+   inside [at_valid_step] violating exactly that conjunct, assert M1 RED with
+   the accepted-state control asserted GREEN first, and P23's L1 GREEN on the
+   SAME state (discrimination). Negative index forgeries are representable
+   because the port's cursors are [int] where upstream's are [nat]
+   (state_predicates.ml:253-256) - that is why the [>= 0] halves exist as
+   deletable sites at all. Isolation is ENFORCED by the stage-C deletion
+   trials, not argued here; each row's label names its ONE subject conjunct. *)
+
+let test_p26_m1_forged_rows () =
+  (* --- the accepted control FIRST, through the SAME builder every row
+         rides, so the reds below are attributable to each row's payload and
+         not to [forge_at]'s plumbing ---------------------------------------- *)
+  let accepted =
+    forge_at ~step:Vsr.Delete_condemned ~needed:[ Some good_pod0 ]
+      ~needed_index:0 ~condemned:[ good_pod1 ] ~condemned_index:0 ~pending:None
+  in
+  Alcotest.(check bool) "control: the injection landed" true
+    (injection_landed accepted);
+  Alcotest.(check bool) "control: M1's premise FIRES on the forge_at state"
+    true
+    (fires family m1_name accepted);
+  Alcotest.(check bool)
+    "control: the reconciler's OWN shapes are GREEN through forge_at at the \
+     cursor values [reconcile_state] hard-codes"
+    true
+    (holds family m1_name accepted);
+  Alcotest.(check bool) "control: and GREEN for P23's L1 too" true
+    (holds p23_family l1_name accepted);
+  (* --- the four-assert row discipline, shared by all fourteen rows -------- *)
+  let fs_row ~(label : string) ~(why : string) (s : Cluster.cluster_state) :
+      unit =
+    Alcotest.(check bool) (label ^ ": the injection landed") true
+      (injection_landed s);
+    Alcotest.(check bool) (label ^ ": M1's premise fires") true
+      (fires family m1_name s);
+    Alcotest.(check bool) (label ^ ": M1 is RED - " ^ why) false
+      (holds family m1_name s);
+    Alcotest.(check bool)
+      (label
+      ^ " DISCRIMINATION: P23's L1 is GREEN on the SAME state - \
+         bound_in_local_state reads only the pods' names and namespaces \
+         (local_binding.ml:126-136), never a cursor and never a step")
+      true
+      (holds p23_family l1_name s)
+  in
+  fs_row ~label:"FS1(:194)"
+    ~why:
+      "needed has length 0 while replicas is 1; :239 stays green (0 < 1 on \
+       the non-empty condemned) and :248 stays green (Delete_condemned is \
+       condemned-or-later)"
+    (m1_state ~needed:[] ~condemned:[ good_pod1 ]);
+  fs_row ~label:"FS2(:195 half A)"
+    ~why:
+      "needed_index -1 fails >= 0 while -1 <= 1 keeps half B green; at Done \
+       every step gate is off and :248 is green (Done is condemned-or-later)"
+    (forge_at ~step:Vsr.Done ~needed:[ Some good_pod0 ] ~needed_index:(-1)
+       ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS3(:195 half B)"
+    ~why:
+      "needed_index 2 fails <= needed_len 1 while 2 >= 0 keeps half A green; \
+       the :230-231 gate is off at Done"
+    (forge_at ~step:Vsr.Done ~needed:[ Some good_pod0 ] ~needed_index:2
+       ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS4(:196 half A)"
+    ~why:
+      "condemned_index -1 fails >= 0 while -1 <= 1 keeps half B green; the \
+       :239 and :240 gates are off at Done"
+    (forge_at ~step:Vsr.Done ~needed:[ Some good_pod0 ] ~needed_index:0
+       ~condemned:[ good_pod1 ] ~condemned_index:(-1) ~pending:None);
+  fs_row ~label:"FS5(:196 half B)"
+    ~why:
+      "condemned_index 2 fails <= condemned_len 1; Done avoids :239 (whose \
+       gate would also red at Delete_condemned) and :248 is green there"
+    (forge_at ~step:Vsr.Done ~needed:[ Some good_pod0 ] ~needed_index:0
+       ~condemned:[ good_pod1 ] ~condemned_index:2 ~pending:None);
+  fs_row ~label:"FS6(:230-231)"
+    ~why:
+      "needed_index 1 fails < needed_len 1 at Create_needed - the \
+       state_predicates.mli:368-369 example; :235 stays green (slot 1 is out \
+       of range and folds none -> true) and :195 half B stays green (1 <= 1)"
+    (forge_at ~step:Vsr.Create_needed ~needed:[ Some good_pod0 ]
+       ~needed_index:1 ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS7(:235)"
+    ~why:
+      "slot 0 is Some at Create_needed where the conjunct wants None - the \
+       mli:369-370 example; :230-231 stays green (0 < 1)"
+    (forge_at ~step:Vsr.Create_needed ~needed:[ Some good_pod0 ]
+       ~needed_index:0 ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS8(:236)"
+    ~why:
+      "slot needed_index - 1 = 0 is Some at After_create_needed where the \
+       conjunct wants None; :242 stays green (1 > 0) and the :230-231 gate \
+       is off"
+    (forge_at ~step:Vsr.After_create_needed ~needed:[ Some good_pod0 ]
+       ~needed_index:1 ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS9(:237)"
+    ~why:
+      "slot 0 is None at Update_needed where the conjunct wants Some; :194 \
+       stays green (length 1 = replicas) and :230-231 stays green (0 < 1)"
+    (forge_at ~step:Vsr.Update_needed ~needed:[ None ] ~needed_index:0
+       ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS10(:238)"
+    ~why:
+      "slot needed_index - 1 = 0 is None at After_update_needed where the \
+       conjunct wants Some; :242 stays green (1 > 0)"
+    (forge_at ~step:Vsr.After_update_needed ~needed:[ None ] ~needed_index:1
+       ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS11(:239)"
+    ~why:
+      "condemned_index 1 fails < condemned_len 1 at Delete_condemned; :196 \
+       half B stays green (1 <= 1) and :248 stays green (condemned-or-later)"
+    (forge_at ~step:Vsr.Delete_condemned ~needed:[ Some good_pod0 ]
+       ~needed_index:0 ~condemned:[ good_pod1 ] ~condemned_index:1
+       ~pending:None);
+  fs_row ~label:"FS12(:240)"
+    ~why:
+      "condemned_index 0 fails > 0 at After_delete_condemned; the :239 gate \
+       is off there and :196 half A stays green (0 >= 0)"
+    (forge_at ~step:Vsr.After_delete_condemned ~needed:[ Some good_pod0 ]
+       ~needed_index:0 ~condemned:[ good_pod1 ] ~condemned_index:0
+       ~pending:None);
+  fs_row ~label:"FS13(:242)"
+    ~why:
+      "needed_index 0 fails > 0 at After_create_needed - the mli:370-371 \
+       example; :236 stays green (slot -1 is out of range and folds none -> \
+       true)"
+    (forge_at ~step:Vsr.After_create_needed ~needed:[ None ] ~needed_index:0
+       ~condemned:[] ~condemned_index:0 ~pending:None);
+  fs_row ~label:"FS14(:248)"
+    ~why:
+      "condemned_index 1 fails = 0 at Create_needed, which is NOT \
+       condemned-or-later - the mli:371-372 example; needed [None] keeps :235 \
+       green and :196 half B stays green (1 <= 1)"
+    (forge_at ~step:Vsr.Create_needed ~needed:[ None ] ~needed_index:0
+       ~condemned:[ good_pod1 ] ~condemned_index:1 ~pending:None)
+
 (* ==== M3's SHAPE CONJUNCTS, and which of them L2 does NOT carry ============
    RULING section 3.1 ships upstream :108-115 and :125-132 unconditionally and
    says they are killable at GRAPH level. The rows here are the STATE-level
@@ -863,6 +1046,53 @@ let test_m3_shape_conjuncts () =
      which is why the two rows above had to show L2 GREEN to mean anything"
     false
     (holds p23_family l2_name foreign)
+
+(* ==== the P26 FORGED-STATE row FS15, M3's :128 (BUILD-SPEC-P26 section 2) ==
+   The last unexercised buyable site: :128 wants [metadata.name is Some] of
+   every listed object. Disclosed FS15 risk note (spec section 2): :127
+   ([Pod.unmarshal]) and :132 ([objects_to_pods]) on a nameless pod object
+   are expected green by CODE READING, not by measurement; if either also
+   reds, the stage-C deletion trial stays green after deleting :128 and the
+   survivor is recorded as a FINDING - the forgery is never retuned to force
+   the trial red. *)
+
+let test_p26_m3_128_row () =
+  (* --- the accepted control FIRST ----------------------------------------- *)
+  let accepted = parked_with etcd_owned_objs in
+  Alcotest.(check bool) "control: the injection landed" true
+    (injection_landed accepted);
+  Alcotest.(check bool)
+    "control: the seed-read baseline is NON-EMPTY - the nameless object below \
+     is added ON TOP of a real payload, so the red is attributable to the ONE \
+     conjunct it perturbs"
+    true
+    (not (etcd_owned_objs = []));
+  Alcotest.(check bool) "control: M3's premise FIRES on the accepted state"
+    true
+    (fires family m3_name accepted);
+  Alcotest.(check bool) "control: the accepted payload is GREEN for M3" true
+    (holds family m3_name accepted);
+  Alcotest.(check bool) "control: and GREEN for P23's L2" true
+    (holds p23_family l2_name accepted);
+  (* --- FS15: upstream :128, the name-is-Some conjunct --------------------- *)
+  let fs15 = parked_with (nameless_pod_obj :: etcd_owned_objs) in
+  Alcotest.(check bool) "FS15(:128): the injection landed" true
+    (injection_landed fs15);
+  Alcotest.(check bool) "FS15(:128): M3's premise fires" true
+    (fires family m3_name fs15);
+  Alcotest.(check bool)
+    "FS15(:128): M3 is RED on a listed pod object whose metadata.name is None \
+     - upstream :128 wants name is Some; the namespace is still the CR's own \
+     so :129-130 cannot fire, and a nameless ref renders name \"\" \
+     (state_predicates.ml:445-452) so :115 sees no duplicate"
+    false
+    (holds family m3_name fs15);
+  Alcotest.(check bool)
+    "FS15(:128) DISCRIMINATION: P23's L2 is GREEN on the SAME state - \
+     resp_objs_in_namespace (local_binding.ml:206-212) reads only the \
+     namespace, which is present"
+    true
+    (holds p23_family l2_name fs15)
 
 (* ==== WHERE THE M3c AND M3d ROWS WENT ======================================
    Two further rows used to live at the end of the case above:
@@ -1139,6 +1369,21 @@ let () =
              :116-118 and :123 rows are RETIRED - those conjuncts are EXCLUDED \
              on the SCOPE ground and their evidence is now a measured pin."
             `Quick test_m3_shape_conjuncts;
+        ] );
+      ( "p26_m1_forged_rows",
+        [
+          Alcotest.test_case
+            "FS1-FS14: each of the fourteen unexercised M1 cursor and slot \
+             conjunct sites reds M1 on a forged state while P23's L1 stays \
+             GREEN (BUILD-SPEC-P26 section 2)"
+            `Quick test_p26_m1_forged_rows;
+        ] );
+      ( "p26_m3_128_row",
+        [
+          Alcotest.test_case
+            "FS15: a nameless listed pod object reds M3's :128 while P23's \
+             L2 stays GREEN (BUILD-SPEC-P26 section 2)"
+            `Quick test_p26_m3_128_row;
         ] );
       ( "mp5_premise_wiring",
         [

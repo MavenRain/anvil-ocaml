@@ -188,12 +188,17 @@ let leg3_case_counts : (string * int) list =
     ("t_p23_local_binding", 11);
     ("t_p23_mutation", 8);
     ("t_p23_regression", 6);
-    ("t_p24_mutation", 7);
+    (* was 7 -> 9: P26 registers the two FORGED-STATE groups
+       (BUILD-SPEC-P26 section 2; the guard's deliberate-update half). *)
+    ("t_p24_mutation", 9);
     ("t_p24_regression", 7);
     ("t_p24_state_predicates", 12);
     ("t_p25_e3_multi_cr", 4);
     ("t_p25_reconcile", 5);
     ("t_p25_state_predicates", 4);
+    (* new row: P26 stage B registers the pin exe (BUILD-SPEC-P26 section 3;
+       the guard's deliberate-update half). *)
+    ("t_p26_pins", 27);
   ]
 
 (* The exact number of upstream anvil-ref cite pins LEG4 must check when

@@ -931,3 +931,30 @@ val predicate_family :
     per-member red / [interesting] counts on a REPLICA (the
     t_p21_guarantee.ml:193-237 technique), NOT from the leg's [violated] name.
     *)
+
+(* ==== P26 superseding pins (append-only; BUILD-SPEC-P26 section 6.1) =======
+
+   The EXCLUDED-WITH-A-PIN block at :97-115 above holds the eight vct:true
+   conjuncts out as RED-CAPABILITY-PENDING. P26 does NOT commit them green.
+   What P26 adds is MEASUREMENT, recorded in the registered pin exe
+   [test/t_p26_pins.ml] (BUILD-SPEC-P26 section 3):
+
+   - the full-evaluation pin: all eight premises evaluated on the committed
+     L0v graph were NON-VACUOUS, with the violating population zero for every
+     one of them;
+   - the inertness pin: both dispatch_after_list else-legs
+     (v_stateful_set_reconciler.ml:485 and :489) were unreachable on L0v, so
+     the named deletion mutants there were INERT rather than uncaught;
+   - the guarantee quad pins and the response-occupancy pins, including the
+     isolated List_response column.
+
+   The :97-115 block's "until a named mutant ... is run" sentence predates
+   those measurements; the correction lives in BUILD-SPEC-P26 prose (the
+   P22/P24 precedent: correct in next-spec prose, never in place) and this
+   appended note is the in-file cross-reference. The block itself is NOT
+   edited: the battery coordinate at :861 is frozen, and inserting lines
+   above it would move a pinned coordinate. The fifteen forged-state rows
+   P26 lands in [test/t_p24_mutation.ml] buy deletion-kill capability for
+   the fourteen previously unexercised M1 sites and for the M3 name
+   conjunct, exactly the FORGED-STATE route the WHAT-WOULD-EXERCISE-THE-REST
+   bullet above records - seed-free, bound-free, pin-free. *)

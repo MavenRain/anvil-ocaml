@@ -340,12 +340,10 @@ let binding_family ~(cr : V_stateful_set.t) ~(controller_id : int) :
       Invariants.name = "vsts_local_pods_and_pvcs_bound_with_key";
       source = "vstatefulset_controller/proof/internal_rely_guarantee.rs:640";
       holds =
-        at_reconcile ~controller_id ~cr_key ~absent:true ~undecodable:true
-          ~decoded:(fun orc st s ->
-            (* :642 - E4 at the decoded state *)
-            bound_in_local_state ~key_name ~key_namespace st
-            (* :643-663 *)
-            && step_binding ~namespace:key_namespace orc st s);
+        (* :642-663 via {!holds_at_key} - the ONE copy of L2's decoded body
+           (P26 rider R1; P25 section 1.1 carried this reshape as the
+           one-copy cleanup). *)
+        holds_at_key ~controller_id ~cr_key;
       interesting =
         at_reconcile ~controller_id ~cr_key ~absent:false ~undecodable:false
           ~decoded:(fun orc st _s ->

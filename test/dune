@@ -20,7 +20,7 @@
    t_p21_regression t_p22_scaledown t_p22_mutation t_p22_regression
    t_p23_local_binding t_p23_mutation t_p23_regression
    t_p24_state_predicates t_p24_mutation t_p24_regression t_p25_e3_multi_cr
-   t_p25_reconcile t_p25_state_predicates)
+   t_p25_reconcile t_p25_state_predicates t_p26_pins)
  ; t_p25_reconcile's prose-reading legs (BUILD-SPEC-P25 section 1.4 open
  ; flag, resolved by a REAL @runtest 2026-08-03): the _build/default mirror
  ; materializes every COMPILED source (.ml/.mli), but NOT the two BUILD-SPEC
