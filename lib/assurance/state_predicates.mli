@@ -990,3 +990,49 @@ val predicate_family :
    :861, and the P26 block above are NOT edited; this note is the
    append-only correction (the P22/P24 precedent). Grounds, stage gates,
    and the pending-mutant ledger: [lib/checker/BUILD-SPEC-P27.md]. *)
+
+(* ==== P28 probe confirmation note (append-only; BUILD-SPEC-P28 section 2) ====
+
+   This block reclassifies four more of the eight vct:true conjuncts that
+   the EXCLUDED-WITH-A-PIN block at :97-115 above holds out as
+   RED-CAPABILITY-PENDING. Four conjuncts are now PROBE-CONFIRMED
+   red-capable on the committed L0v graph (116 states,
+   [test/t_p26_pins.ml]:60-73), adding to the P27-confirmed :197/:246.
+   Probe sites, all in [lib/controllers/v_stateful_set_reconciler.ml],
+   one mutant per trial:
+
+   - Trial A, site :495 (create_or_skip_pvc_helper loop-back guard, the
+     comparison relaxed from strict to inclusive): :199 measured
+     violating=8 of premise 16 and :244 measured violating=8 of premise
+     40 (p28-trial-A495-mutant.log:11-19). This mutant also shifted the
+     premises of other conjuncts (:197/:198/:215-221 80->48, :223-228
+     40->48, :246 8->0), a disclosed side effect.
+   - Trial B, site :287 (make_pvc record field [spec] set to [None]):
+     :215-221 measured violating=80 of premise 80 with zero collateral;
+     every other conjunct held premise MATCH, violating=0
+     (p28-trial-B287-mutant.log:11-19).
+   - Trial C, site :282 (make_pvc name argument [ord] replaced by
+     [ord + 1]): :223-228 measured violating=40 of premise 40 with zero
+     collateral (p28-trial-C282-mutant.log:11-19).
+
+   Two conjuncts STAY at RED-CAPABILITY-PENDING:
+
+   - :198 (pvcs.len = pvc_cnt) needs a length-INCREASING pvcs mutant:
+     pvc_cnt is pinned to 1 on L0v ([lib/assurance/scenario.ml]:240-241,
+     the single-entry volume_claim_templates list), so a shortening
+     mutant can only take 1 to 0, which inerts the whole PVC step
+     family. Different mechanism from all three run families.
+   - :233 (AfterCreatePVC => idx>0) is structurally blocked: the
+     After_create_pvc pvc_index is set only at ml:623, the banned
+     :197/:246 probe site (one site per trial). Trial A measured :233
+     at premise 8 MATCH, violating=0 (p28-trial-A495-mutant.log:16).
+     Whether :233 is unkillable-without-the-banned-site is a
+     phase-owner decision, not a trial gap.
+
+   Standing caveat (P27 precedent): the probes ran on L0v only, never
+   on the FAIR (8580-state) or CRASH (10552-state) batteries. All
+   eight conjuncts stay EXCLUDED from committed green. The :97-115
+   block, the frozen battery coordinate at :861, and the P26 and P27
+   blocks above are NOT edited; this note is the append-only
+   correction (the P22/P24/P27 precedent). Grounds, stage gates, and
+   the pending ledger: [lib/checker/BUILD-SPEC-P28.md]. *)
